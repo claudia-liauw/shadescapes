@@ -94,7 +94,7 @@ Create `tests/test_config.py`:
 from pathlib import Path
 
 from src.config import (
-    EXPLORATION_DIR,
+    IMAGES_DIR,
     METADATA_CSV,
     PROJECT_ROOT,
     SCORES_CSV,
@@ -105,7 +105,7 @@ from src.config import (
 def test_paths_are_under_project_root():
     assert PROJECT_ROOT.is_dir()
     assert METADATA_CSV == PROJECT_ROOT / "data" / "filtered_streetscapes.csv"
-    assert EXPLORATION_DIR == PROJECT_ROOT / "data" / "images" / "exploration"
+    assert IMAGES_DIR == PROJECT_ROOT / "data" / "images" / "exploration"
     assert SCORES_CSV == PROJECT_ROOT / "data" / "scores.csv"
 
 
@@ -133,10 +133,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 METADATA_CSV = DATA_DIR / "filtered_streetscapes.csv"
-EXPLORATION_DIR = DATA_DIR / "images" / "exploration"
+IMAGES_DIR = DATA_DIR / "images" / "exploration"
 SCORES_CSV = DATA_DIR / "scores.csv"
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 
 def get_gemini_api_key() -> str | None:
@@ -275,7 +275,7 @@ Create `tests/conftest.py`:
 import pandas as pd
 import pytest
 
-from src.config import EXPLORATION_DIR, METADATA_CSV, SCORES_CSV
+from src.config import IMAGES_DIR, METADATA_CSV, SCORES_CSV
 
 
 @pytest.fixture
@@ -321,7 +321,7 @@ def data_dir(tmp_path, sample_metadata_rows, monkeypatch):
     monkeypatch.setattr("src.config.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("src.config.DATA_DIR", tmp_path / "data")
     monkeypatch.setattr("src.config.METADATA_CSV", metadata_path)
-    monkeypatch.setattr("src.config.EXPLORATION_DIR", exploration)
+    monkeypatch.setattr("src.config.IMAGES_DIR", exploration)
     monkeypatch.setattr("src.config.SCORES_CSV", scores_path)
     return tmp_path
 ```
@@ -404,7 +404,7 @@ from pathlib import Path
 import folium
 import pandas as pd
 
-from src.config import EXPLORATION_DIR, METADATA_CSV, SCORES_CSV
+from src.config import IMAGES_DIR, METADATA_CSV, SCORES_CSV
 
 
 def marker_color(score: float | None) -> str:
@@ -441,7 +441,7 @@ def _load_scores() -> pd.DataFrame:
 def load_map_points() -> pd.DataFrame:
     metadata = pd.read_csv(METADATA_CSV)
     scores = _load_scores()
-    image_uuids = _discover_image_uuids(EXPLORATION_DIR)
+    image_uuids = _discover_image_uuids(IMAGES_DIR)
 
     points = metadata[metadata["uuid"].isin(image_uuids)].copy()
     if scores.empty:
@@ -589,7 +589,7 @@ def test_discover_images(data_dir):
 def test_discover_images_empty(tmp_path, monkeypatch):
     exploration = tmp_path / "data" / "images" / "exploration"
     exploration.mkdir(parents=True)
-    monkeypatch.setattr("src.score.EXPLORATION_DIR", exploration)
+    monkeypatch.setattr("src.score.IMAGES_DIR", exploration)
     assert discover_images() == []
 
 
@@ -670,7 +670,7 @@ def test_run_scoring_skips_existing(mock_score_image, data_dir, monkeypatch):
 def test_run_scoring_no_images(tmp_path, monkeypatch):
     exploration = tmp_path / "data" / "images" / "exploration"
     exploration.mkdir(parents=True)
-    monkeypatch.setattr("src.score.EXPLORATION_DIR", exploration)
+    monkeypatch.setattr("src.score.IMAGES_DIR", exploration)
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     with pytest.raises(NoImagesError):
         run_scoring()
@@ -699,14 +699,14 @@ import pandas as pd
 from google import genai
 from PIL import Image
 
-from src.config import EXPLORATION_DIR, GEMINI_MODEL, METADATA_CSV, SCORES_CSV, get_gemini_api_key
+from src.config import IMAGES_DIR, GEMINI_MODEL, METADATA_CSV, SCORES_CSV, get_gemini_api_key
 from src.models import MissingApiKeyError, NoImagesError, ScoreSummary, ShadeScore
 
 
 def discover_images() -> list[Path]:
-    if not EXPLORATION_DIR.exists():
+    if not IMAGES_DIR.exists():
         return []
-    return sorted(EXPLORATION_DIR.glob("*.jpeg"))
+    return sorted(IMAGES_DIR.glob("*.jpeg"))
 
 
 def build_prompt(heading: float | None = None) -> str:
@@ -934,7 +934,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from src.config import EXPLORATION_DIR, PROJECT_ROOT
+from src.config import IMAGES_DIR, PROJECT_ROOT
 from src.map_builder import build_map
 from src.models import MissingApiKeyError, NoImagesError
 from src.score import run_scoring
@@ -975,7 +975,7 @@ def score_images(force: bool = Query(default=False)):
 def get_image(filename: str):
     if not filename.endswith(".jpeg"):
         raise HTTPException(status_code=404, detail="Image not found")
-    image_path = EXPLORATION_DIR / filename
+    image_path = IMAGES_DIR / filename
     if not image_path.exists():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(image_path, media_type="image/jpeg")
