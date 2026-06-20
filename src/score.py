@@ -93,7 +93,7 @@ def load_existing_scores() -> pd.DataFrame:
             ]
         )
     try:
-        return pd.read_csv(config.SCORES_CSV)
+        return pd.read_csv(SCORES_CSV)
     except EmptyDataError:
         return pd.DataFrame(
             columns=[
