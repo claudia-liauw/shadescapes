@@ -16,6 +16,7 @@ class ScoreSummary(BaseModel):
     skip_reasons: dict[str, int] = Field(default_factory=dict)
     skips: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    elapsed_seconds: float | None = None
 
     @computed_field
     @property
@@ -41,6 +42,8 @@ class ScoreSummary(BaseModel):
         if self.errors:
             error_noun = "error" if len(self.errors) == 1 else "errors"
             message += f" {len(self.errors)} scoring {error_noun}."
+        if self.elapsed_seconds is not None:
+            message += f" Completed in {self.elapsed_seconds:.1f}s."
         return message
 
 

@@ -1,5 +1,7 @@
 import json
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from src.models import MissingApiKeyError, NoImagesError, NoMetadataError, Score
 IMAGES_DIR = config.IMAGES_DIR
 METADATA_CSV = config.METADATA_CSV
 SCORES_CSV = config.SCORES_CSV
+BATCH_SIZE = 15
 
 
 def discover_images() -> list[str]:
@@ -120,7 +123,17 @@ def _write_scores(df: pd.DataFrame) -> None:
     df.to_csv(SCORES_CSV, index=False)
 
 
+def _score_work_item(
+    uuid: str, image_path: Path, metadata_row: pd.Series
+) -> tuple[str, ShadeScore | None, str | None]:
+    try:
+        return uuid, score_image(image_path, metadata_row), None
+    except Exception as exc:
+        return uuid, None, str(exc)
+
+
 def run_scoring(force: bool = False) -> ScoreSummary:
+    started_at = time.perf_counter()
     api_key = config.get_google_api_key()
     if not api_key:
         raise MissingApiKeyError("GOOGLE_API_KEY is not configured")
@@ -144,8 +157,8 @@ def run_scoring(force: bool = False) -> ScoreSummary:
     rows: list[dict] = existing.to_dict("records") if not existing.empty else []
     rows_by_uuid = {str(row["uuid"]): row for row in rows}
 
-    image_names = images
-    image_paths = [IMAGES_DIR / name for name in image_names]
+    image_paths = [IMAGES_DIR / name for name in images]
+    to_score: list[tuple[str, Path, pd.Series]] = []
 
     for image_path in image_paths:
         uuid = image_path.stem
@@ -161,8 +174,18 @@ def run_scoring(force: bool = False) -> ScoreSummary:
             skips.append(f"{uuid}: already scored")
             continue
 
-        try:
-            result = score_image(image_path, metadata_rows[uuid])
+        to_score.append((uuid, image_path, metadata_rows[uuid]))
+
+    with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
+        futures = [
+            executor.submit(_score_work_item, uuid, image_path, metadata_row)
+            for uuid, image_path, metadata_row in to_score
+        ]
+        for future in as_completed(futures):
+            uuid, result, error = future.result()
+            if error is not None:
+                errors.append(f"{uuid}: {error}")
+                continue
             rows_by_uuid[uuid] = {
                 "uuid": uuid,
                 "pedestrian_shade_score": result.pedestrian_shade_score,
@@ -172,14 +195,14 @@ def run_scoring(force: bool = False) -> ScoreSummary:
                 "scored_at": datetime.now(timezone.utc).isoformat(),
             }
             scored_count += 1
-        except Exception as exc:
-            errors.append(f"{uuid}: {exc}")
 
     _write_scores(pd.DataFrame(rows_by_uuid.values()))
+    elapsed_seconds = round(time.perf_counter() - started_at, 1)
     return ScoreSummary(
         scored=scored_count,
         skipped=skipped_count,
         skip_reasons={key: count for key, count in skip_reasons.items() if count},
         skips=skips,
         errors=errors,
+        elapsed_seconds=elapsed_seconds,
     )
