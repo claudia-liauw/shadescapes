@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from src import config
-from src.map_builder import build_map
+from src.map_builder import build_map, render_map_html
 from src.models import MissingApiKeyError, NoImagesError
 from src.score import run_scoring
 
@@ -23,7 +23,7 @@ def health():
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     folium_map = build_map()
-    map_html = folium_map.get_root().render()
+    map_html = render_map_html(folium_map)
     return templates.TemplateResponse(
         request,
         "index.html",

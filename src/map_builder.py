@@ -1,4 +1,5 @@
 import json
+import re
 from html import escape
 from pathlib import Path
 
@@ -140,14 +141,23 @@ def build_map() -> folium.Map:
             tooltip=f"Shade: {score:.2f}" if score is not None and not pd.isna(score) else "Not scored",
         ).add_to(sg_map)
 
-    legend_html = """
-    <div style="position:fixed;bottom:24px;left:24px;z-index:9999;background:white;padding:10px 12px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.2);font-size:13px;">
-      <strong>Shade index</strong><br/>
-      <span style="color:#2ecc71">&#9679;</span> High (&ge; 0.7)<br/>
-      <span style="color:#f1c40f">&#9679;</span> Medium (0.4–0.7)<br/>
-      <span style="color:#e74c3c">&#9679;</span> Low (&lt; 0.4)<br/>
-      <span style="color:#808080">&#9679;</span> Not scored
-    </div>
-    """
-    sg_map.get_root().html.add_child(folium.Element(legend_html))
     return sg_map
+
+
+def render_map_html(sg_map: folium.Map) -> str:
+    """Return Folium map markup safe to embed in our page template."""
+    html = sg_map.get_root().render()
+    head_match = re.search(r"<head>(.*?)</head>", html, re.S)
+    body_match = re.search(r"<body>(.*?)</body>", html, re.S)
+    scripts_match = re.search(r"</body>(.*?)</html>", html, re.S)
+    if not head_match or not body_match:
+        return html
+
+    head = re.sub(
+        r"<style>\s*#map\s*\{[^}]*\}\s*</style>\s*",
+        "",
+        head_match.group(1),
+        flags=re.S,
+    )
+    scripts = scripts_match.group(1) if scripts_match else ""
+    return f"{head}{body_match.group(1)}{scripts}"

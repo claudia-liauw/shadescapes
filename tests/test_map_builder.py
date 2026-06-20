@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src.map_builder import marker_color, load_map_points, build_map
+from src.map_builder import marker_color, load_map_points, build_map, render_map_html
 
 
 def test_marker_color_unscored():
@@ -58,6 +58,8 @@ def test_load_map_points_with_scores(data_dir):
 
 def test_build_map_returns_folium_map(data_dir):
     folium_map = build_map()
+    html = render_map_html(folium_map)
     assert folium_map is not None
-    html = folium_map.get_root().render()
-    assert "aaa-111" in html or "1.3" in html
+    assert "folium-map" in html
+    assert "iframe" not in html
+    assert "L.map" in html

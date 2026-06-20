@@ -18,8 +18,15 @@
     </div>
   </header>
 
-  <main>
-    <div id="map" class="map">{{ map_html|safe }}</div>
+  <main class="map">
+    <div id="map-container">{{ map_html|safe }}</div>
+    <div class="map-legend" aria-label="Shade index legend">
+      <strong>Shade index</strong><br />
+      <span class="legend-swatch legend-high">&#9679;</span> High (&ge; 0.7)<br />
+      <span class="legend-swatch legend-medium">&#9679;</span> Medium (0.4–0.7)<br />
+      <span class="legend-swatch legend-low">&#9679;</span> Low (&lt; 0.4)<br />
+      <span class="legend-swatch legend-unscored">&#9679;</span> Not scored
+    </div>
   </main>
 
   <script>
