@@ -4,7 +4,12 @@
 
 **Goal:** Build a notebook-based evaluation (`eval/evaluation.ipynb`) that scores a curated eval set via `eval/score_eval.py` into `eval/data/scores.csv`, reports Tier A (VLM vs human on real images), Tier B (run stability), and Tier C (mismatch gallery grouped by `scene_category`), with optional synthetic gap-fill images.
 
-**Architecture:** Pure join/metric logic lives in `eval/metrics.py` (unit-tested). Eval scoring uses `src.score.score_image` but reads images from `data/images/sample/` and `data/images/synthetic/` — not `config.IMAGES_DIR` (`exploration/`). Production demo scores stay in `data/scores.csv`. Multi-run stability is collected by `eval/collect_run_variance.py` into `eval/data/run_variance.csv`. Optional `eval/generate_images.py` fills synthetic gap cases from `eval/data/synthetic_prompts.csv`.
+**Architecture:** Pure join/metric logic lives in `eval/metrics.py` (unit-tested). Scoring is centralized in `src/score.py`: `score_image` (Gemini call + parse), `load_metadata(csv_path)`, `load_existing_scores(csv_path)`, `build_score_row`, and **`run_scoring_batch`** (parallel `ThreadPoolExecutor`, up to 15 concurrent API calls). Production `run_scoring()` discovers images in `exploration/` and writes `data/scores.csv`. Eval scripts build their own `to_score` lists and call the same batch runner:
+
+- **`eval/score_eval.py`** — uuids from `human_labels.csv`, images from `sample/` or `synthetic/` via `resolve_image_path()`, metadata from filtered + synthetic CSVs (concatenated locally), writes `eval/data/scores.csv`
+- **`eval/collect_run_variance.py`** — 10 sample images × 3 runs, keys `(uuid, run_id)`, writes `eval/data/run_variance.csv`
+
+Do **not** call `run_scoring()` from eval — it is hard-wired to `exploration/` and production paths. Optional `eval/generate_images.py` fills synthetic gap cases from `eval/data/synthetic_prompts.csv`.
 
 **Tech Stack:** Python 3.10, pandas, matplotlib, Pillow, google-genai, IPython/Jupyter (all already in `pyproject.toml`)
 
@@ -21,8 +26,9 @@
 | `eval/__init__.py` | Package marker |
 | `eval/paths.py` | Eval-specific paths (`eval/data/*.csv`, `sample/`, `synthetic/`) |
 | `eval/metrics.py` | Join eval data, Spearman/MAE, mismatch flags, run-variance summaries |
-| `eval/score_eval.py` | Score uuids in `eval/data/human_labels.csv` → `eval/data/scores.csv` |
-| `eval/collect_run_variance.py` | Score 10 images 3× each from `sample/` → `eval/data/run_variance.csv` |
+| `src/score.py` | Shared scoring: `score_image`, `load_metadata`, `load_existing_scores`, `build_score_row`, `run_scoring_batch`, production `run_scoring` |
+| `eval/score_eval.py` | Score uuids in `eval/data/human_labels.csv` → `eval/data/scores.csv` (via `run_scoring_batch`) |
+| `eval/collect_run_variance.py` | Score 10 images 3× each from `sample/` → `eval/data/run_variance.csv` (via `run_scoring_batch`) |
 | `eval/generate_images.py` | Optional: Imagen API → `synthetic/` + `synthetic_streetscapes.csv` |
 | `tests/test_eval_metrics.py` | Unit tests for metrics module |
 | `tests/test_score_eval.py` | Unit tests for score_eval (mocked API) |
@@ -500,14 +506,14 @@ Create `tests/test_score_eval.py`:
 import pandas as pd
 from unittest.mock import patch
 
-from eval.score_eval import load_eval_scores, score_eval_uuids
+from eval.score_eval import score_eval_uuids
 from src.models import ShadeScore
+from src.score import SCORE_COLUMNS, load_existing_scores
 
 
-def test_load_eval_scores_empty(tmp_path, monkeypatch):
+def test_load_existing_scores_for_eval_path(tmp_path):
     scores_csv = tmp_path / "scores.csv"
-    monkeypatch.setattr("eval.score_eval.EVAL_SCORES_CSV", scores_csv)
-    df = load_eval_scores()
+    df = load_existing_scores(scores_csv)
     assert list(df.columns) == [
         "uuid",
         "pedestrian_shade_score",
@@ -519,7 +525,7 @@ def test_load_eval_scores_empty(tmp_path, monkeypatch):
     assert df.empty
 
 
-@patch("eval.score_eval.score_image")
+@patch("src.score.score_image")
 def test_score_eval_uuids_writes_eval_scores(mock_score_image, tmp_path, monkeypatch):
     eval_dir = tmp_path / "eval"
     data_dir = tmp_path / "data"
@@ -553,6 +559,8 @@ def test_score_eval_uuids_writes_eval_scores(mock_score_image, tmp_path, monkeyp
     monkeypatch.setattr("eval.metrics.SAMPLE_IMAGES_DIR", sample_dir)
     monkeypatch.setattr("eval.metrics.SYNTHETIC_IMAGES_DIR", data_dir / "images" / "synthetic")
 
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
     mock_score_image.return_value = ShadeScore(
         pedestrian_shade_score=0.6,
         shade_sources=["street_trees"],
@@ -578,16 +586,17 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'eval.score_eval'`
 
 - [ ] **Step 3: Implement `eval/score_eval.py`**
 
+Thin eval wrapper around shared `run_scoring_batch`. Metadata concatenation (filtered + synthetic) stays here — `load_metadata()` in `src/score.py` reads one CSV at a time.
+
 ```python
 """Score evaluation images into eval/data/scores.csv. Does not touch data/scores.csv."""
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
+import time
+from pathlib import Path
 
 import pandas as pd
-from pandas.errors import EmptyDataError
 
 from eval.metrics import resolve_image_path
 from eval.paths import (
@@ -597,82 +606,60 @@ from eval.paths import (
     SYNTHETIC_METADATA_CSV,
 )
 from src.models import ScoreSummary
-from src.score import score_image
-
-SCORE_COLUMNS = [
-    "uuid",
-    "pedestrian_shade_score",
-    "shade_sources",
-    "confidence",
-    "reasoning",
-    "scored_at",
-]
+from src.score import SCORE_COLUMNS, build_score_row, load_existing_scores, load_metadata, run_scoring_batch
 
 
-def load_eval_scores() -> pd.DataFrame:
-    if not EVAL_SCORES_CSV.exists():
-        return pd.DataFrame(columns=SCORE_COLUMNS)
-    try:
-        return pd.read_csv(EVAL_SCORES_CSV)
-    except EmptyDataError:
-        return pd.DataFrame(columns=SCORE_COLUMNS)
-
-
-def _load_metadata_index() -> dict[str, pd.Series]:
+def _eval_metadata_rows() -> dict[str, pd.Series]:
     frames: list[pd.DataFrame] = []
-    if FILTERED_METADATA_CSV.exists():
-        frames.append(pd.read_csv(FILTERED_METADATA_CSV))
-    if SYNTHETIC_METADATA_CSV.exists():
-        frames.append(pd.read_csv(SYNTHETIC_METADATA_CSV))
+    for path in (FILTERED_METADATA_CSV, SYNTHETIC_METADATA_CSV):
+        metadata = load_metadata(path)
+        if not metadata.empty:
+            frames.append(metadata)
     if not frames:
         return {}
-    metadata = pd.concat(frames, ignore_index=True)
-    return {str(row["uuid"]): row for _, row in metadata.iterrows()}
+    combined = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+    return {str(row["uuid"]): row for _, row in combined.iterrows()}
 
 
 def score_eval_uuids(force: bool = False) -> ScoreSummary:
+    started_at = time.perf_counter()
     labels = pd.read_csv(HUMAN_LABELS_CSV)
-    metadata_rows = _load_metadata_index()
-    existing = load_eval_scores()
+    metadata_rows = _eval_metadata_rows()
+    existing = load_existing_scores(EVAL_SCORES_CSV)
     existing_uuids = set(existing["uuid"].astype(str)) if not existing.empty else set()
 
-    scored_count = 0
     skipped_count = 0
-    errors: list[str] = []
-    rows: list[dict] = existing.to_dict("records") if not existing.empty else []
-    rows_by_uuid = {str(row["uuid"]): row for row in rows}
+    pre_errors: list[str] = []
+    rows_by_uuid = {str(row["uuid"]): row for row in existing.to_dict("records")} if not existing.empty else {}
+    to_score: list[tuple[str, Path, pd.Series]] = []
 
     for uuid in labels["uuid"].astype(str):
         if not force and uuid in existing_uuids:
             skipped_count += 1
             continue
         if uuid not in metadata_rows:
-            errors.append(f"{uuid}: no metadata row")
+            pre_errors.append(f"{uuid}: no metadata row")
             continue
         image_path = resolve_image_path(uuid)
         if image_path is None:
-            errors.append(f"{uuid}: missing image in sample/ or synthetic/")
+            pre_errors.append(f"{uuid}: missing image in sample/ or synthetic/")
             continue
-        try:
-            result = score_image(image_path, metadata_rows[uuid], retry=True)
-        except Exception as exc:
-            errors.append(f"{uuid}: {exc}")
-            continue
-        rows_by_uuid[uuid] = {
-            "uuid": uuid,
-            "pedestrian_shade_score": result.pedestrian_shade_score,
-            "shade_sources": json.dumps(result.shade_sources),
-            "confidence": result.confidence,
-            "reasoning": result.reasoning,
-            "scored_at": datetime.now(timezone.utc).isoformat(),
-        }
-        scored_count += 1
-        print(f"{uuid}: {result.pedestrian_shade_score:.2f}")
+        to_score.append((uuid, image_path, metadata_rows[uuid]))
 
+    new_rows, summary = run_scoring_batch(
+        to_score,
+        build_row=build_score_row,
+        skipped_count=skipped_count,
+        pre_errors=pre_errors,
+        started_at=started_at,
+        on_scored=lambda uuid, result: print(f"{uuid}: {result.pedestrian_shade_score:.2f}"),
+    )
+    for row in new_rows:
+        rows_by_uuid[row["uuid"]] = row
     EVAL_SCORES_CSV.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows_by_uuid.values(), columns=SCORE_COLUMNS).to_csv(EVAL_SCORES_CSV, index=False)
     print(f"Wrote {len(rows_by_uuid)} rows to {EVAL_SCORES_CSV}")
-    return ScoreSummary(scored=scored_count, skipped=skipped_count, errors=errors)
+    return summary
 
 
 if __name__ == "__main__":
@@ -683,6 +670,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     score_eval_uuids(force=args.force)
 ```
+
+> **Shared scoring in `src/score.py`:** Ensure `run_scoring_batch`, `build_score_row`, `load_metadata(csv_path)`, and `load_existing_scores(csv_path)` exist before implementing this script. Production `run_scoring()` should delegate to the same batch runner.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -699,7 +688,7 @@ git add eval/score_eval.py tests/test_score_eval.py
 git commit -m "$(cat <<'EOF'
 feat(eval): add score_eval script writing to eval/data/scores.csv
 
-Scores human_labels uuids from sample/ and synthetic/ without touching production scores.
+Scores human_labels uuids via shared run_scoring_batch; reads sample/ and synthetic/ without touching production scores.
 EOF
 )"
 ```
@@ -823,61 +812,79 @@ print(f'Wrote {len(picked[:10])} uuids to {out}')
 
 - [ ] **Step 2: Create `eval/collect_run_variance.py`**
 
+Uses the same `run_scoring_batch` as production and eval scoring. Work items use key `(uuid, run_id)` and a local `build_row` for the variance CSV schema. Metadata comes from `load_metadata(FILTERED_METADATA_CSV)` only (stability sample is real Mapillary images in `sample/`).
+
 ```python
 """Score stability sample images multiple times for Tier B. Requires GOOGLE_API_KEY."""
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 
 from eval.metrics import RUNS_PER_IMAGE
-from eval.paths import FILTERED_METADATA_CSV, RUN_VARIANCE_CSV, SAMPLE_IMAGES_DIR, STABILITY_SAMPLE_CSV, SYNTHETIC_METADATA_CSV
-from src.score import score_image
+from eval.paths import FILTERED_METADATA_CSV, RUN_VARIANCE_CSV, SAMPLE_IMAGES_DIR, STABILITY_SAMPLE_CSV
+from src.models import ShadeScore
+from src.score import load_metadata, run_scoring_batch
+
+VARIANCE_COLUMNS = [
+    "uuid",
+    "run_id",
+    "pedestrian_shade_score",
+    "confidence",
+    "scored_at",
+]
 
 
-def _load_metadata_index() -> dict[str, pd.Series]:
-    frames: list[pd.DataFrame] = []
-    if FILTERED_METADATA_CSV.exists():
-        frames.append(pd.read_csv(FILTERED_METADATA_CSV))
-    if SYNTHETIC_METADATA_CSV.exists():
-        frames.append(pd.read_csv(SYNTHETIC_METADATA_CSV))
-    metadata = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    return {str(row["uuid"]): row for _, row in metadata.iterrows()}
+def _build_variance_row(key: tuple[str, int], result: ShadeScore) -> dict:
+    uuid, run_id = key
+    return {
+        "uuid": uuid,
+        "run_id": run_id,
+        "pedestrian_shade_score": result.pedestrian_shade_score,
+        "confidence": result.confidence,
+        "scored_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def collect_run_variance(runs_per_image: int = RUNS_PER_IMAGE) -> pd.DataFrame:
+    started_at = time.perf_counter()
     sample = pd.read_csv(STABILITY_SAMPLE_CSV)
-    metadata = _load_metadata_index()
-    rows: list[dict] = []
+    metadata_rows = {
+        str(row["uuid"]): row for _, row in load_metadata(FILTERED_METADATA_CSV).iterrows()
+    }
+    to_score: list[tuple[tuple[str, int], Path, pd.Series]] = []
 
     for uuid in sample["uuid"].astype(str):
         image_path = SAMPLE_IMAGES_DIR / f"{uuid}.jpeg"
-        if uuid not in metadata:
+        if uuid not in metadata_rows:
             print(f"WARNING: no metadata for {uuid}")
             continue
         if not image_path.exists():
             print(f"WARNING: missing image {image_path}")
             continue
-        meta_row = metadata[uuid]
+        meta_row = metadata_rows[uuid]
         for run_id in range(1, runs_per_image + 1):
-            result = score_image(image_path, meta_row, retry=True)
-            rows.append(
-                {
-                    "uuid": uuid,
-                    "run_id": run_id,
-                    "pedestrian_shade_score": result.pedestrian_shade_score,
-                    "confidence": result.confidence,
-                    "scored_at": datetime.now(timezone.utc).isoformat(),
-                }
-            )
-            print(f"{uuid} run {run_id}: {result.pedestrian_shade_score:.2f}")
+            to_score.append(((uuid, run_id), image_path, meta_row))
 
-    df = pd.DataFrame(rows)
+    new_rows, summary = run_scoring_batch(
+        to_score,
+        build_row=_build_variance_row,
+        started_at=started_at,
+        on_scored=lambda key, result: print(
+            f"{key[0]} run {key[1]}: {result.pedestrian_shade_score:.2f}"
+        ),
+    )
+    for error in summary.errors:
+        print(f"WARNING: {error}")
+
+    df = pd.DataFrame(sorted(new_rows, key=lambda row: (row["uuid"], row["run_id"])), columns=VARIANCE_COLUMNS)
     RUN_VARIANCE_CSV.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(RUN_VARIANCE_CSV, index=False)
-    print(f"Wrote {len(df)} rows to {RUN_VARIANCE_CSV}")
+    print(f"Wrote {len(df)} rows to {RUN_VARIANCE_CSV} in {summary.elapsed_seconds:.1f}s")
     return df
 
 
@@ -900,7 +907,7 @@ git add eval/data/stability_sample.csv eval/collect_run_variance.py eval/data/ru
 git commit -m "$(cat <<'EOF'
 feat(eval): add Tier B run variance collection from sample images
 
-Scores 10-image stability subset 3x into eval/data/run_variance.csv.
+Scores 10-image stability subset 3x via shared run_scoring_batch into eval/data/run_variance.csv.
 EOF
 )"
 ```
@@ -1345,6 +1352,7 @@ EOF
 | Spec requirement | Task |
 |------------------|------|
 | `eval/data/scores.csv` separate from `data/scores.csv` | Task 2, Task 6 |
+| Shared parallel scoring via `run_scoring_batch` | `src/score.py`, Task 2, Task 4 |
 | Tier A: Spearman + MAE vs human (real only) | Task 1, Task 6 (cells 3–4) |
 | Tier B: run stability (10×3) | Task 1, Task 4, Task 6 (cells 5–6) |
 | Tier C: mismatch + `scene_category` + hour/sidewalk_pct + images | Task 1, Task 6 (cells 7–9) |
@@ -1363,9 +1371,9 @@ EOF
 ## Verification
 
 ```bash
-uv run pytest tests/test_eval_metrics.py tests/test_score_eval.py -v
+uv run pytest tests/test_eval_metrics.py tests/test_score_eval.py tests/test_score.py -v
 uv run python -m eval.score_eval                    # requires GOOGLE_API_KEY + labeled human_labels.csv
-uv run python eval/collect_run_variance.py          # Tier B; requires API key
+uv run python eval/collect_run_variance.py          # Tier B; requires API key; parallel batch
 uv run jupyter execute eval/evaluation.ipynb --inplace
 ```
 

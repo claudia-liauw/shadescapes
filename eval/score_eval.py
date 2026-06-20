@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
+import time
+from pathlib import Path
 
 import pandas as pd
-from pandas.errors import EmptyDataError
 
 from eval.metrics import resolve_image_path
 from eval.paths import (
@@ -16,82 +15,62 @@ from eval.paths import (
     SYNTHETIC_METADATA_CSV,
 )
 from src.models import ScoreSummary
-from src.score import score_image
+from src.score import SCORE_COLUMNS, build_score_row, load_existing_scores, load_metadata, run_scoring_batch
 
-SCORE_COLUMNS = [
-    "uuid",
-    "pedestrian_shade_score",
-    "shade_sources",
-    "confidence",
-    "reasoning",
-    "scored_at",
-]
-
-
-def load_eval_scores() -> pd.DataFrame:
-    if not EVAL_SCORES_CSV.exists():
-        return pd.DataFrame(columns=SCORE_COLUMNS)
-    try:
-        return pd.read_csv(EVAL_SCORES_CSV)
-    except EmptyDataError:
-        return pd.DataFrame(columns=SCORE_COLUMNS)
-
-
-def _load_metadata_index() -> dict[str, pd.Series]:
+def _eval_metadata_rows() -> dict[str, pd.Series]:
     frames: list[pd.DataFrame] = []
-    if FILTERED_METADATA_CSV.exists():
-        frames.append(pd.read_csv(FILTERED_METADATA_CSV))
-    if SYNTHETIC_METADATA_CSV.exists():
-        frames.append(pd.read_csv(SYNTHETIC_METADATA_CSV))
+    for path in (FILTERED_METADATA_CSV, SYNTHETIC_METADATA_CSV):
+        metadata = load_metadata(path)
+        if not metadata.empty:
+            frames.append(metadata)
     if not frames:
         return {}
-    metadata = pd.concat(frames, ignore_index=True)
-    return {str(row["uuid"]): row for _, row in metadata.iterrows()}
+    combined = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+    return {str(row["uuid"]): row for _, row in combined.iterrows()}
 
 
 def score_eval_uuids(force: bool = False) -> ScoreSummary:
+    started_at = time.perf_counter()
     labels = pd.read_csv(HUMAN_LABELS_CSV)
-    metadata_rows = _load_metadata_index()
-    existing = load_eval_scores()
+    metadata_rows = _eval_metadata_rows()
+    existing = load_existing_scores(EVAL_SCORES_CSV)
     existing_uuids = set(existing["uuid"].astype(str)) if not existing.empty else set()
 
-    scored_count = 0
     skipped_count = 0
-    errors: list[str] = []
-    rows: list[dict] = existing.to_dict("records") if not existing.empty else []
-    rows_by_uuid = {str(row["uuid"]): row for row in rows}
+    pre_errors: list[str] = []
+    rows_by_uuid = {str(row["uuid"]): row for row in existing.to_dict("records")} if not existing.empty else {}
+    to_score: list[tuple[str, Path, pd.Series]] = []
 
     for uuid in labels["uuid"].astype(str):
         if not force and uuid in existing_uuids:
             skipped_count += 1
             continue
         if uuid not in metadata_rows:
-            errors.append(f"{uuid}: no metadata row")
+            pre_errors.append(f"{uuid}: no metadata row")
             continue
         image_path = resolve_image_path(uuid)
         if image_path is None:
-            errors.append(f"{uuid}: missing image in sample/ or synthetic/")
+            pre_errors.append(f"{uuid}: missing image in sample/ or synthetic/")
             continue
-        try:
-            result = score_image(image_path, metadata_rows[uuid], retry=True)
-        except Exception as exc:
-            errors.append(f"{uuid}: {exc}")
-            continue
-        rows_by_uuid[uuid] = {
-            "uuid": uuid,
-            "pedestrian_shade_score": result.pedestrian_shade_score,
-            "shade_sources": json.dumps(result.shade_sources),
-            "confidence": result.confidence,
-            "reasoning": result.reasoning,
-            "scored_at": datetime.now(timezone.utc).isoformat(),
-        }
-        scored_count += 1
-        print(f"{uuid}: {result.pedestrian_shade_score:.2f}")
+        to_score.append((uuid, image_path, metadata_rows[uuid]))
 
-    EVAL_SCORES_CSV.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows_by_uuid.values(), columns=SCORE_COLUMNS).to_csv(EVAL_SCORES_CSV, index=False)
-    print(f"Wrote {len(rows_by_uuid)} rows to {EVAL_SCORES_CSV}")
-    return ScoreSummary(scored=scored_count, skipped=skipped_count, errors=errors)
+    def write_results(rows_by_uuid_out: dict[str, dict]) -> None:
+        EVAL_SCORES_CSV.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(rows_by_uuid_out.values(), columns=SCORE_COLUMNS).to_csv(EVAL_SCORES_CSV, index=False)
+        print(f"Wrote {len(rows_by_uuid_out)} rows to {EVAL_SCORES_CSV}")
+
+    new_rows, summary = run_scoring_batch(
+        to_score,
+        build_row=build_score_row,
+        skipped_count=skipped_count,
+        pre_errors=pre_errors,
+        started_at=started_at,
+        on_scored=lambda uuid, result: print(f"{uuid}: {result.pedestrian_shade_score:.2f}"),
+    )
+    for row in new_rows:
+        rows_by_uuid[row["uuid"]] = row
+    write_results(rows_by_uuid)
+    return summary
 
 
 if __name__ == "__main__":

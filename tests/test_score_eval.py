@@ -1,14 +1,14 @@
 import pandas as pd
 from unittest.mock import patch
 
-from eval.score_eval import load_eval_scores, score_eval_uuids
+from eval.score_eval import score_eval_uuids
+from src.score import SCORE_COLUMNS, load_existing_scores
 from src.models import ShadeScore
 
 
-def test_load_eval_scores_empty(tmp_path, monkeypatch):
+def test_load_existing_scores_for_eval_path(tmp_path):
     scores_csv = tmp_path / "scores.csv"
-    monkeypatch.setattr("eval.score_eval.EVAL_SCORES_CSV", scores_csv)
-    df = load_eval_scores()
+    df = load_existing_scores(scores_csv)
     assert list(df.columns) == [
         "uuid",
         "pedestrian_shade_score",
@@ -20,7 +20,7 @@ def test_load_eval_scores_empty(tmp_path, monkeypatch):
     assert df.empty
 
 
-@patch("eval.score_eval.score_image")
+@patch("src.score.score_image")
 def test_score_eval_uuids_writes_eval_scores(mock_score_image, tmp_path, monkeypatch):
     eval_dir = tmp_path / "eval"
     data_dir = tmp_path / "data"
@@ -53,6 +53,8 @@ def test_score_eval_uuids_writes_eval_scores(mock_score_image, tmp_path, monkeyp
     monkeypatch.setattr("eval.score_eval.SYNTHETIC_METADATA_CSV", data_dir / "synthetic_streetscapes.csv")
     monkeypatch.setattr("eval.metrics.SAMPLE_IMAGES_DIR", sample_dir)
     monkeypatch.setattr("eval.metrics.SYNTHETIC_IMAGES_DIR", data_dir / "images" / "synthetic")
+
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
 
     mock_score_image.return_value = ShadeScore(
         pedestrian_shade_score=0.6,
