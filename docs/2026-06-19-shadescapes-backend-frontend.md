@@ -46,6 +46,7 @@ Add to `[project].dependencies`:
 "uvicorn[standard]>=0.34.0",
 "jinja2>=3.1.0",
 "python-multipart>=0.0.20",
+"python-dotenv>=1.0.0",
 ```
 
 Add dev dependency group:
@@ -98,7 +99,7 @@ from src.config import (
     METADATA_CSV,
     PROJECT_ROOT,
     SCORES_CSV,
-    get_gemini_api_key,
+    get_google_api_key,
 )
 
 
@@ -109,14 +110,14 @@ def test_paths_are_under_project_root():
     assert SCORES_CSV == PROJECT_ROOT / "data" / "scores.csv"
 
 
-def test_get_gemini_api_key_missing(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    assert get_gemini_api_key() is None
+def test_get_google_api_key_missing(monkeypatch):
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    assert get_google_api_key() is None
 
 
-def test_get_gemini_api_key_present(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    assert get_gemini_api_key() == "test-key"
+def test_get_google_api_key_present(monkeypatch):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    assert get_google_api_key() == "test-key"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -130,7 +131,10 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'src.config'`
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env")
 DATA_DIR = PROJECT_ROOT / "data"
 METADATA_CSV = DATA_DIR / "filtered_streetscapes.csv"
 IMAGES_DIR = DATA_DIR / "images" / "exploration"
@@ -139,8 +143,8 @@ SCORES_CSV = DATA_DIR / "scores.csv"
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 
-def get_gemini_api_key() -> str | None:
-    return os.getenv("GEMINI_API_KEY")
+def get_google_api_key() -> str | None:
+    return os.getenv("GOOGLE_API_KEY")
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -243,7 +247,7 @@ class NoImagesError(Exception):
 
 
 class MissingApiKeyError(Exception):
-    """Raised when GEMINI_API_KEY is not set."""
+    """Raised when GOOGLE_API_KEY is not set."""
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -404,7 +408,7 @@ from pathlib import Path
 import folium
 import pandas as pd
 
-from src.config import IMAGES_DIR, METADATA_CSV, SCORES_CSV
+from src import config
 
 
 def marker_color(score: float | None) -> str:
@@ -539,6 +543,8 @@ def build_map() -> folium.Map:
     return sg_map
 ```
 
+> **Note:** Importing the `config` module (rather than individual path constants) keeps the implementation aligned with the fixtures’ `monkeypatch.setattr("src.config.*")` usage so the temporary directories configured in `tests/conftest.py` can override the paths at runtime instead of stale values being cached at import time.
+
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_map_builder.py -v`
@@ -565,7 +571,7 @@ Create `tests/test_score.py`:
 
 ```python
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -628,7 +634,7 @@ def test_load_existing_scores_empty(data_dir):
 
 @patch("src.score._call_gemini")
 def test_score_image_success(mock_call, data_dir, monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     mock_call.return_value = json.dumps(
         {
             "pedestrian_shade_score": 0.75,
@@ -646,7 +652,7 @@ def test_score_image_success(mock_call, data_dir, monkeypatch):
 
 @patch("src.score.score_image")
 def test_run_scoring_skips_existing(mock_score_image, data_dir, monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     scores_path = data_dir / "data" / "scores.csv"
     pd.DataFrame(
         [
@@ -657,7 +663,15 @@ def test_run_scoring_skips_existing(mock_score_image, data_dir, monkeypatch):
                 "confidence": "medium",
                 "reasoning": "Already scored.",
                 "scored_at": "2026-06-19T12:00:00",
-            }
+            },
+            {
+                "uuid": "bbb-222",
+                "pedestrian_shade_score": 0.6,
+                "shade_sources": "[]",
+                "confidence": "medium",
+                "reasoning": "Already scored.",
+                "scored_at": "2026-06-19T13:00:00",
+            },
         ]
     ).to_csv(scores_path, index=False)
 
@@ -671,13 +685,13 @@ def test_run_scoring_no_images(tmp_path, monkeypatch):
     exploration = tmp_path / "data" / "images" / "exploration"
     exploration.mkdir(parents=True)
     monkeypatch.setattr("src.score.IMAGES_DIR", exploration)
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     with pytest.raises(NoImagesError):
         run_scoring()
 
 
 def test_run_scoring_missing_api_key(data_dir, monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     with pytest.raises(MissingApiKeyError):
         run_scoring()
 ```
@@ -699,14 +713,18 @@ import pandas as pd
 from google import genai
 from PIL import Image
 
-from src.config import IMAGES_DIR, GEMINI_MODEL, METADATA_CSV, SCORES_CSV, get_gemini_api_key
+from src import config
 from src.models import MissingApiKeyError, NoImagesError, ScoreSummary, ShadeScore
 
+IMAGES_DIR = config.IMAGES_DIR
+METADATA_CSV = config.METADATA_CSV
+SCORES_CSV = config.SCORES_CSV
 
-def discover_images() -> list[Path]:
+
+def discover_images() -> list[str]:
     if not IMAGES_DIR.exists():
         return []
-    return sorted(IMAGES_DIR.glob("*.jpeg"))
+    return [path.name for path in sorted(IMAGES_DIR.glob("*.jpeg"))]
 
 
 def build_prompt(heading: float | None = None) -> str:
@@ -748,7 +766,7 @@ def _call_gemini(image_path: Path, prompt: str) -> str:
     client = genai.Client()
     image = Image.open(image_path)
     response = client.models.generate_content(
-        model=GEMINI_MODEL,
+        model=config.GEMINI_MODEL,
         contents=[image, prompt],
     )
     return response.text or ""
@@ -788,9 +806,9 @@ def _write_scores(df: pd.DataFrame) -> None:
 
 
 def run_scoring(force: bool = False) -> ScoreSummary:
-    api_key = get_gemini_api_key()
+    api_key = config.get_google_api_key()
     if not api_key:
-        raise MissingApiKeyError("GEMINI_API_KEY is not configured")
+        raise MissingApiKeyError("GOOGLE_API_KEY is not configured")
 
     images = discover_images()
     if not images:
@@ -807,7 +825,9 @@ def run_scoring(force: bool = False) -> ScoreSummary:
     rows: list[dict] = existing.to_dict("records") if not existing.empty else []
     rows_by_uuid = {str(row["uuid"]): row for row in rows}
 
-    for image_path in images:
+    image_paths = [IMAGES_DIR / name for name in images]
+
+    for image_path in image_paths:
         uuid = image_path.stem
         if uuid not in metadata_by_uuid.index:
             skipped_count += 1
@@ -835,6 +855,8 @@ def run_scoring(force: bool = False) -> ScoreSummary:
     _write_scores(pd.DataFrame(rows_by_uuid.values()))
     return ScoreSummary(scored=scored_count, skipped=skipped_count, errors=errors)
 ```
+
+> **Note:** The score module now exposes `IMAGES_DIR`, `METADATA_CSV`, and `SCORES_CSV` as symbols backed by `src.config`, and `discover_images()` returns bare filenames so fixtures can monkeypatch these attributes. This is why the tests manually patch `src.score.*` and the warning about stale constants from Task 4 applies here as well.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -913,7 +935,7 @@ def test_score_endpoint_handles_no_images(mock_run_scoring, client):
 def test_score_endpoint_missing_api_key(client, monkeypatch):
     from src.models import MissingApiKeyError
 
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     with patch("src.main.run_scoring", side_effect=MissingApiKeyError("missing")):
         response = client.post("/api/score")
     assert response.status_code == 503
@@ -934,14 +956,14 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from src.config import IMAGES_DIR, PROJECT_ROOT
+from src import config
 from src.map_builder import build_map
 from src.models import MissingApiKeyError, NoImagesError
 from src.score import run_scoring
 
 app = FastAPI(title="ShadeScapes")
-templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
-app.mount("/static", StaticFiles(directory=str(PROJECT_ROOT / "static")), name="static")
+templates = Jinja2Templates(directory=str(config.PROJECT_ROOT / "templates"))
+app.mount("/static", StaticFiles(directory=str(config.PROJECT_ROOT / "static")), name="static")
 
 
 @app.get("/health")
@@ -975,11 +997,13 @@ def score_images(force: bool = Query(default=False)):
 def get_image(filename: str):
     if not filename.endswith(".jpeg"):
         raise HTTPException(status_code=404, detail="Image not found")
-    image_path = IMAGES_DIR / filename
+    image_path = config.IMAGES_DIR / filename
     if not image_path.exists():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(image_path, media_type="image/jpeg")
 ```
+
+> **Note:** `templates/index.html` and `static/style.css` currently contain minimal markup (header + button and placeholder styles) so Task 6 tests can render the page. Task 7 will replace these files with the full UI and styling described in the next section.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1177,13 +1201,13 @@ Expected: 9 grey markers on map centred on corridor (~1.30°N, 103.80°E)
 
 Run in another terminal:
 ```bash
-env -u GEMINI_API_KEY curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/api/score
+env -u GOOGLE_API_KEY curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/api/score
 ```
 Expected: `503`
 
 - [ ] **Step 4: Run live scoring**
 
-Ensure `.env` or shell has `GEMINI_API_KEY` set. Click **Run Shade Scoring** in browser.
+Ensure `.env` or shell has `GOOGLE_API_KEY` set. Click **Run Shade Scoring** in browser.
 Expected: `data/scores.csv` created; page reloads; markers turn green/yellow/red
 
 - [ ] **Step 5: Verify popup content**
@@ -1228,6 +1252,7 @@ Only run this step if fixes were required in Step 1–6.
 ## Notes for implementer
 
 - `data/` is gitignored; local images must exist at `data/images/exploration/`.
+- Set `GOOGLE_API_KEY` in `.env` (loaded via `python-dotenv` at startup) or in the shell. The `google-genai` SDK reads this env var automatically.
 - If `gemini-2.0-flash` is unavailable, set `GEMINI_MODEL` env var to a working model id.
 - Folium legend uses `position:fixed`; acceptable for demo.
 - Do not commit `.env` or `data/scores.csv` unless explicitly requested.

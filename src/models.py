@@ -21,4 +21,4 @@ class NoImagesError(Exception):
 
 
 class MissingApiKeyError(Exception):
-    """Raised when GEMINI_API_KEY is not set."""
+    """Raised when GOOGLE_API_KEY is not set."""

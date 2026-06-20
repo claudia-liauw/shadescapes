@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+data/
+.env
+cache/
+expt.ipynb
+instructions.md
+process.md
+vlm-approach.md
