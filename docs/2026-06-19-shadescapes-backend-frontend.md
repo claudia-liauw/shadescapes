@@ -404,7 +404,7 @@ from pathlib import Path
 import folium
 import pandas as pd
 
-from src.config import IMAGES_DIR, METADATA_CSV, SCORES_CSV
+from src import config
 
 
 def marker_color(score: float | None) -> str:
@@ -538,6 +538,8 @@ def build_map() -> folium.Map:
     sg_map.get_root().html.add_child(folium.Element(legend_html))
     return sg_map
 ```
+
+> **Note:** Importing the `config` module (rather than individual path constants) keeps the implementation aligned with the fixtures’ `monkeypatch.setattr("src.config.*")` usage so the temporary directories configured in `tests/conftest.py` can override the paths at runtime instead of stale values being cached at import time.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
