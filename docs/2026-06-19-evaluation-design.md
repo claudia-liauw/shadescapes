@@ -54,10 +54,11 @@ Metrics in `results.md`; no inline images.
 
 ## Architecture
 
-### Image directories
+### Directories
 
 | Directory | Count | Role |
 |-----------|-------|------|
+| `eval/data/` | — | **Eval CSVs** — labels, scores, variance, prompts |
 | `data/images/sample/` | ~50 | **Eval image pool** — full Mapillary download for the corridor |
 | `data/images/exploration/` | ~9 | **Demo only** — subset of `sample/`; `config.IMAGES_DIR` for the FastAPI app |
 | `data/images/synthetic/` | 0–8 | **Optional gap-fill** — generated images for Tier C stress tests |
@@ -66,7 +67,7 @@ Metrics in `results.md`; no inline images.
 
 ### Eval set selection
 
-The eval does **not** auto-pick images from a folder. **`eval/human_labels.csv` defines the eval set** (~30 uuids chosen by the author from `sample/`, plus any synthetic uuids).
+The eval does **not** auto-pick images from a folder. **`eval/data/human_labels.csv` defines the eval set** (~30 uuids chosen by the author from `sample/`, plus any synthetic uuids).
 
 ```text
 filtered_streetscapes.csv (~53 metadata rows)
@@ -74,12 +75,12 @@ filtered_streetscapes.csv (~53 metadata rows)
 data/images/sample/ (~50 images) ──► author picks ~30 uuids
         │                                    │
         │                                    ▼
-        │                          eval/human_labels.csv  ◄── eval set
+        │                          eval/data/human_labels.csv  ◄── eval set
         │                                    │
 eval/score_eval.py (or notebook cell)        │ join
   scores uuids in human_labels               │
   from sample/ + synthetic/                  ▼
-        │                          eval/scores.csv
+        │                          eval/data/scores.csv
         └──────────────────────────────────► evaluation.ipynb
 
 data/images/exploration/ (~9) ──► FastAPI demo ──► data/scores.csv (production)
@@ -90,18 +91,18 @@ Keep the full `sample/` corpus (~50). Do not reduce it to 30 — the ~30 is a **
 ### Data flow
 
 ```text
-human_labels.csv ──────────────┐
-eval/scores.csv ───────────────┤
-run_variance.csv ──────────────┼──► evaluation.ipynb ──► saved outputs
+eval/data/human_labels.csv ────┐
+eval/data/scores.csv ──────────┤
+eval/data/run_variance.csv ────┼──► evaluation.ipynb ──► saved outputs
 filtered_streetscapes.csv ─────┤
 synthetic_streetscapes.csv ────┘
 data/images/sample/{uuid}.jpeg ──────► Tier C display (real)
 data/images/synthetic/{uuid}.jpeg ───► Tier C display (synthetic)
 
-eval/synthetic_prompts.csv ──► eval/generate_images.py ──► synthetic images + metadata
+eval/data/synthetic_prompts.csv ──► eval/generate_images.py ──► synthetic images + metadata
 ```
 
-No separate eval service or API. The notebook imports `METADATA_CSV` from `src.config` and reads `eval/scores.csv` for VLM outputs — **not** `data/scores.csv` (production/demo). For image paths, use `data/images/sample/` (real) and `data/images/synthetic/` — **not** `config.IMAGES_DIR` (`exploration/`).
+No separate eval service or API. The notebook imports `METADATA_CSV` from `src.config` and reads `eval/data/scores.csv` for VLM outputs — **not** `data/scores.csv` (production/demo). For image paths, use `data/images/sample/` (real) and `data/images/synthetic/` — **not** `config.IMAGES_DIR` (`exploration/`).
 
 Eval scoring uses `src.score.score_image` with the same prompt/model as production, but reads images from `sample/` or `synthetic/` via `eval/score_eval.py` (or an equivalent notebook cell). Do not use `run_scoring()` — that only discovers images in `exploration/`.
 
@@ -129,7 +130,7 @@ Optional `eval/run_eval.py` may hold pure functions (join, metrics, mismatch fla
 
 **Implementation:** `pandas.Series.corr(method="spearman")` for ρ; `(pred - human_norm).abs().mean()` for MAE.
 
-**Scores used:** Single-run values from `eval/scores.csv` for uuids in `human_labels.csv`, written by `eval/score_eval.py` (same `score_image` function as production). Run stability is assessed separately in Tier B.
+**Scores used:** Single-run values from `eval/data/scores.csv` for uuids in `human_labels.csv`, written by `eval/score_eval.py` (same `score_image` function as production). Run stability is assessed separately in Tier B.
 
 **Scope:** Tier A headline metrics use **real** Mapillary images only. Synthetic gap-fill images (see below) are excluded from ρ and MAE unless explicitly noted as a supplementary table.
 
@@ -140,7 +141,7 @@ Measures whether the VLM returns **consistent** scores for the same image + prom
 **Protocol:**
 - Select **10 images** from `human_labels.csv`, spanning varied shade levels and `scene_category` values
 - Score each image **3 times** from `data/images/sample/{uuid}.jpeg` using `src.score.score_image`
-- Store raw runs in `eval/run_variance.csv`
+- Store raw runs in `eval/data/run_variance.csv`
 
 **Metrics (descriptive, no significance tests at N=10):**
 
@@ -182,7 +183,7 @@ Target ~8–12 flagged images from 30 labels. Adjust threshold if needed to hit 
 | `sidewalk_pct` | metadata CSV | How much of the frame is walkable sidewalk |
 | `heading` | metadata CSV | Camera orientation context |
 | `lat`, `lon` | metadata CSV | Spatial position on corridor (placeholder for synthetic) |
-| VLM `shade_sources`, `reasoning`, `confidence` | `eval/scores.csv` | Qualitative explanation |
+| VLM `shade_sources`, `reasoning`, `confidence` | `eval/data/scores.csv` | Qualitative explanation |
 
 **Summary table:** Mismatch counts grouped by `scene_category`.
 
@@ -252,7 +253,7 @@ The `sample/` pool (~50 images) is skewed toward campus/parking scenes, afternoo
 
 ### Component: `eval/generate_images.py`
 
-CLI entrypoint. Reads `eval/synthetic_prompts.csv`, calls an image-generation model (Gemini Imagen via existing `google-genai` client), writes images and metadata. Skips existing uuids unless `--force`.
+CLI entrypoint. Reads `eval/data/synthetic_prompts.csv`, calls an image-generation model (Gemini Imagen via existing `google-genai` client), writes images and metadata. Skips existing uuids unless `--force`.
 
 ```bash
 uv run python -m eval.generate_images
@@ -261,7 +262,7 @@ uv run python -m eval.generate_images --uuid syn-linkway-01
 
 **Responsibilities:**
 
-1. Read prompt rows from `eval/synthetic_prompts.csv`
+1. Read prompt rows from `eval/data/synthetic_prompts.csv`
 2. Generate image via API; save to `data/images/synthetic/{uuid}.jpeg`
 3. Append metadata row to `data/synthetic_streetscapes.csv` (`source=synthetic`)
 4. Print summary of created/skipped uuids
@@ -276,7 +277,7 @@ Afternoon lighting consistent with {hour}:00.
 No text overlays, no watermarks, no people.
 ```
 
-### `eval/synthetic_prompts.csv`
+### `eval/data/synthetic_prompts.csv`
 
 Author-curated gap list. `scene_category` pre-fills `human_labels.csv`.
 
@@ -314,10 +315,10 @@ Same schema as `filtered_streetscapes.csv` plus `source=synthetic`. Use placehol
 
 ### Workflow
 
-1. Author fills `eval/synthetic_prompts.csv` for missing categories
+1. Author fills `eval/data/synthetic_prompts.csv` for missing categories
 2. Run `eval/generate_images.py`; review images manually — re-roll or edit prompts if artifacts are obvious
-3. Add synthetic uuids to `eval/human_labels.csv` (pre-fill `scene_category`; label `shade_1to5`)
-4. Run `eval/score_eval.py` to score all uuids in `human_labels.csv` from `sample/` and `synthetic/`; write to `eval/scores.csv`
+3. Add synthetic uuids to `eval/data/human_labels.csv` (pre-fill `scene_category`; label `shade_1to5`)
+4. Run `eval/score_eval.py` to score all uuids in `human_labels.csv` from `sample/` and `synthetic/`; write to `eval/data/scores.csv`
 5. Notebook joins real + synthetic metadata via `pd.concat`; filter by `source` for Tier A vs Tier C
 
 **Framing:** Synthetic images are supplementary stress tests for Tier C category coverage. Disclose in README limitations; do not include in map demo unless explicitly desired.
@@ -326,7 +327,9 @@ Same schema as `filtered_streetscapes.csv` plus `source=synthetic`. Use placehol
 
 ## Data Files
 
-### `eval/human_labels.csv`
+All eval CSVs live under **`eval/data/`** (separate from production `data/` at repo root).
+
+### `eval/data/human_labels.csv`
 
 **Defines the eval set.** Author curates ~30 uuids from `data/images/sample/` (plus optional synthetic uuids). This file is the single source of truth for which images are evaluated — not the image directories themselves.
 
@@ -339,7 +342,7 @@ Same schema as `filtered_streetscapes.csv` plus `source=synthetic`. Use placehol
 
 **How to pick the ~30:** Browse `data/images/sample/`. Select uuids that span varied shade conditions and `scene_category` values. Prefer images with matching rows in `filtered_streetscapes.csv`. Skip uuids with no image file in `sample/`. The remaining ~20 images in `sample/` stay outside eval unless added here later.
 
-Synthetic images: add uuids from `eval/synthetic_prompts.csv` after generation; `scene_category` can be pre-filled from that file.
+Synthetic images: add uuids from `eval/data/synthetic_prompts.csv` after generation; `scene_category` can be pre-filled from that file.
 
 **`scene_category` options** — pick the single best fit for the walkable path in the image:
 
@@ -356,23 +359,23 @@ Assign `scene_category` for every labeled image, not only mismatches — Tier C 
 
 ### `eval/score_eval.py`
 
-Scores eval images only — uuids listed in `human_labels.csv` that are not yet in `eval/scores.csv` (or all, with `--force`).
+Scores eval images only — uuids listed in `human_labels.csv` that are not yet in `eval/data/scores.csv` (or all, with `--force`).
 
 | Input | Path |
 |-------|------|
-| Labels | `eval/human_labels.csv` |
+| Labels | `eval/data/human_labels.csv` |
 | Real images | `data/images/sample/{uuid}.jpeg` |
 | Synthetic images | `data/images/synthetic/{uuid}.jpeg` |
 | Metadata | `filtered_streetscapes.csv` + `synthetic_streetscapes.csv` |
-| Output | `eval/scores.csv` |
+| Output | `eval/data/scores.csv` |
 
 ```bash
 uv run python -m eval.score_eval
 ```
 
-Uses `src.score.score_image` (same prompt/model as production). Writes to `eval/scores.csv` only — does not read or modify `data/scores.csv`, `exploration/`, or the demo scoring path.
+Uses `src.score.score_image` (same prompt/model as production). Writes to `eval/data/scores.csv` only — does not read or modify `data/scores.csv`, `exploration/`, or the demo scoring path.
 
-### `eval/scores.csv`
+### `eval/data/scores.csv`
 
 VLM outputs for the eval set. Same schema as `data/scores.csv` but kept separate from production/demo scores.
 
@@ -385,7 +388,7 @@ VLM outputs for the eval set. Same schema as `data/scores.csv` but kept separate
 | `reasoning` | string | VLM explanation |
 | `scored_at` | string | ISO timestamp |
 
-### `eval/stability_sample.csv`
+### `eval/data/stability_sample.csv`
 
 10 uuids drawn from `human_labels.csv` for Tier B. Written once; subset of the eval set.
 
@@ -393,7 +396,7 @@ VLM outputs for the eval set. Same schema as `data/scores.csv` but kept separate
 |--------|------|-------------|
 | `uuid` | string | Image to re-score |
 
-### `eval/run_variance.csv`
+### `eval/data/run_variance.csv`
 
 Raw multi-run VLM outputs for Tier B.
 
@@ -410,7 +413,7 @@ Raw multi-run VLM outputs for Tier B.
 | File | Key columns | Used by |
 |------|-------------|---------|
 | `data/scores.csv` | `uuid`, `pedestrian_shade_score`, … | Demo app only |
-| `eval/scores.csv` | same schema | Eval notebook (Tier A, C) |
+| `eval/data/scores.csv` | same schema | Eval notebook (Tier A, C) |
 | `data/filtered_streetscapes.csv` | `uuid`, `lat`, `lon`, `heading`, `hour`, `sidewalk_pct`, `place` | Eval + demo |
 | `data/synthetic_streetscapes.csv` | Same schema; `source=synthetic` | Eval only |
 | `data/images/sample/{uuid}.jpeg` | Real eval images | Eval |
@@ -421,7 +424,7 @@ Raw multi-run VLM outputs for Tier B.
 
 Concatenate `filtered_streetscapes.csv` and `synthetic_streetscapes.csv` into a single metadata frame (add `source` column: `mapillary` / `synthetic`).
 
-**Eval set** = inner join on `uuid` across `human_labels.csv`, `eval/scores.csv`, and metadata. Only uuids present in `human_labels.csv` enter Tier A/B/C. Report actual N and `source` breakdown in the notebook.
+**Eval set** = inner join on `uuid` across `human_labels.csv`, `eval/data/scores.csv`, and metadata. Only uuids present in `human_labels.csv` enter Tier A/B/C. Report actual N and `source` breakdown in the notebook.
 
 Image lookup for gallery: `sample/{uuid}.jpeg`, falling back to `synthetic/{uuid}.jpeg`.
 
@@ -434,7 +437,7 @@ Committed **with saved cell outputs** (images, tables, charts visible offline).
 | Section | Content |
 |---------|---------|
 | **1. Intro** | Methodology summary, eval claim, limitations |
-| **2. Setup** | Imports, load CSVs (`eval/scores.csv`, not `data/scores.csv`), concat metadata, join, compute `human_norm` |
+| **2. Setup** | Imports, load CSVs (`eval/data/scores.csv`, not `data/scores.csv`), concat metadata, join, compute `human_norm` |
 | **3. Tier A** | VLM ρ and MAE on real images; optional scatter (human vs VLM with 45° line) |
 | **4. Tier B** | Run stability summary from `run_variance.csv`; per-image std/range table |
 | **5. Tier C** | Mismatch flags; summary by `scene_category`; inline gallery (real + synthetic, incl. `source`) |
@@ -476,13 +479,13 @@ No new dependencies required. Spearman via `pandas.Series.corr(method="spearman"
 
 | Case | Behaviour |
 |------|-----------|
-| Labeled uuid missing from `eval/scores.csv` | Exclude from eval; print warning listing uuids |
+| Labeled uuid missing from `eval/data/scores.csv` | Exclude from eval; print warning listing uuids |
 | Labeled uuid missing from metadata | Exclude; print warning |
 | Labeled uuid missing image in `sample/` or `synthetic/` | Exclude from eval; print warning |
 | Image file missing for mismatch | Show placeholder text in gallery cell; do not crash notebook |
 | `synthetic_streetscapes.csv` missing | Tier C runs on real images only; print warning |
 | `generate_images.py` API failure | Skip uuid; print error; do not write partial metadata |
-| `eval/scores.csv` missing or empty | Notebook runs through setup but Tier A/C show warning; prompt to run `eval/score_eval.py` |
+| `eval/data/scores.csv` missing or empty | Notebook runs through setup but Tier A/C show warning; prompt to run `eval/score_eval.py` |
 | `run_variance.csv` missing or incomplete | Tier B section shows warning; Tier A/C still run |
 | Fewer than 10 scored images | Notebook runs but README notes eval is preliminary |
 
