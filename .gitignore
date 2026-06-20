@@ -10,6 +10,7 @@ wheels/
 .venv
 
 data/
+!eval/data/
 .env
 cache/
 expt.ipynb
