@@ -27,8 +27,27 @@ def test_index_renders_map(client):
     assert "Run Shade Scoring" in response.text
 
 
+def test_index_with_missing_metadata(client, data_dir):
+    (data_dir / "data" / "filtered_streetscapes.csv").unlink()
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "ShadeScapes" in response.text
+
+
 def test_image_route_404(client):
     response = client.get("/images/does-not-exist.jpeg")
+    assert response.status_code == 404
+
+
+def test_image_route_success(client):
+    response = client.get("/images/aaa-111.jpeg")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.content == b"fake-image-1"
+
+
+def test_image_route_rejects_path_traversal(client):
+    response = client.get("/images/../../../etc/passwd.jpeg")
     assert response.status_code == 404
 
 

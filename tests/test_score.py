@@ -60,6 +60,20 @@ def test_load_existing_scores_empty(data_dir):
     assert df.empty
 
 
+def test_load_existing_scores_empty_file(data_dir):
+    (data_dir / "data" / "scores.csv").write_text("")
+    df = load_existing_scores()
+    assert df.empty
+    assert list(df.columns) == [
+        "uuid",
+        "pedestrian_shade_score",
+        "shade_sources",
+        "confidence",
+        "reasoning",
+        "scored_at",
+    ]
+
+
 @patch("src.score._call_gemini")
 def test_score_image_success(mock_call, data_dir, monkeypatch):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
@@ -76,6 +90,52 @@ def test_score_image_success(mock_call, data_dir, monkeypatch):
     row = metadata.loc[metadata["uuid"] == "aaa-111"].iloc[0]
     result = score_image(image_path, row)
     assert result.pedestrian_shade_score == 0.75
+
+
+@patch("src.score._call_gemini", side_effect=RuntimeError("API down"))
+def test_score_image_does_not_retry_on_api_error(mock_call, data_dir, monkeypatch):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    image_path = data_dir / "data" / "images" / "exploration" / "aaa-111.jpeg"
+    metadata = pd.read_csv(data_dir / "data" / "filtered_streetscapes.csv")
+    row = metadata.loc[metadata["uuid"] == "aaa-111"].iloc[0]
+    with pytest.raises(RuntimeError, match="API down"):
+        score_image(image_path, row)
+    assert mock_call.call_count == 1
+
+
+@patch("src.score._call_gemini")
+def test_run_scoring_scores_new_image(mock_call, data_dir, monkeypatch):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    scores_path = data_dir / "data" / "scores.csv"
+    pd.DataFrame(
+        [
+            {
+                "uuid": "aaa-111",
+                "pedestrian_shade_score": 0.5,
+                "shade_sources": "[]",
+                "confidence": "medium",
+                "reasoning": "Already scored.",
+                "scored_at": "2026-06-19T12:00:00",
+            }
+        ]
+    ).to_csv(scores_path, index=False)
+    mock_call.return_value = json.dumps(
+        {
+            "pedestrian_shade_score": 0.4,
+            "shade_sources": ["street_trees"],
+            "confidence": "low",
+            "reasoning": "Sparse cover.",
+        }
+    )
+
+    summary = run_scoring(force=False)
+    assert summary.scored == 1
+    assert summary.skipped == 1
+
+    scores = pd.read_csv(scores_path)
+    assert len(scores) == 2
+    bbb_row = scores.loc[scores["uuid"] == "bbb-222"].iloc[0]
+    assert bbb_row["pedestrian_shade_score"] == 0.4
 
 
 @patch("src.score.score_image")

@@ -26,6 +26,12 @@ def test_load_map_points_with_empty_scores_file(data_dir):
     assert points["pedestrian_shade_score"].isna().all()
 
 
+def test_load_map_points_missing_metadata(data_dir):
+    (data_dir / "data" / "filtered_streetscapes.csv").unlink()
+    points = load_map_points()
+    assert points.empty
+
+
 def test_load_map_points_joins_images(data_dir):
     points = load_map_points()
     assert len(points) == 2
