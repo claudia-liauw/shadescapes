@@ -12,7 +12,7 @@ The GovTech brief requires an honest evaluation with a justified methodology. We
 
 **Primary claim:** VLM shade scores agree with human judgment on a hand-labeled sample of streetscape images.
 
-**Unit of evaluation:** Individual streetscape images (~30 hand-labeled, curated from the `sample/` image pool, optionally supplemented by ~6–8 synthetic gap-fill images).
+**Unit of evaluation:** Individual streetscape images (~30 hand-labeled, curated from the `sample/` image pool, optionally supplemented by ~5–6 synthetic gap-fill images).
 
 **Not claiming:** Island-wide accuracy, time-of-day precision, segment/route-level performance, synthetic-image realism, or that the VLM is ground truth.
 
@@ -61,7 +61,7 @@ Metrics in `results.md`; no inline images.
 | `eval/data/` | — | **Eval CSVs** — labels, scores, variance, prompts |
 | `data/images/sample/` | ~50 | **Eval image pool** — full Mapillary download for the corridor |
 | `data/images/exploration/` | ~9 | **Demo only** — subset of `sample/`; `config.IMAGES_DIR` for the FastAPI app |
-| `data/images/synthetic/` | 0–8 | **Optional gap-fill** — generated images for Tier C stress tests |
+| `data/images/synthetic/` | 0–6 | **Optional gap-fill** — generated images for Tier C stress tests |
 
 `exploration/` is not the eval set. The app scores and maps the 9 demo images; eval uses a separate curated list.
 
@@ -229,27 +229,22 @@ The `sample/` pool (~50 images) is skewed toward campus/parking scenes, afternoo
 | **Time** | Mostly 14:00–15:00 | Low sun (7–9), harsh noon (12), long afternoon shadows (17–18) |
 | **Framing** | Low `sidewalk_pct`; road-centric | Walkable path dominates lower frame (~30–50%) |
 | **Setting** | Campus, parking, hospital | HDB linkway, shopfront awning, bus stop, urban street corridor |
-| **`scene_category`** | Sparse institutional outdoor shots | Several categories below may be absent |
+| **`scene_category`** | Sparse institutional outdoor shots | `building_shadow` absent; `covered_walkway` underrepresented |
 
-### Edge cases to generate (first pass: 6–8 images)
+After hand-labeling 30 real images: `building_shadow` has 0 rows; `covered_walkway` has 1 (pavilion, not a linkway); `tree_canopy` and off-path / dappled shade traps are already well covered. Synthetics should fill those gaps, not duplicate them.
 
-| `scene_category` | Edge case | Why generate |
-|------------------|-----------|--------------|
-| `covered_walkway` | HDB sheltered linkway, MRT overhead cover | Singapore-specific; rare in campus captures |
-| `building_shadow` | Narrow gap between towers, deep wall shadow on sidewalk | Urban-canyon geometry |
-| `tree_canopy` | Street-tree row with **dappled** shade on path | Park lawn trees ≠ functional street shade |
-| `open_exposure` | Wide arterial, no trees, midday glare | Path-focused open scene |
-| `mixed_sources` | Half building shadow, half open sky on same path | Partial-shade judgment |
-| `ambiguous_path` | Shared path, construction barriers, unclear walk zone | Classic VLM failure mode |
+### Edge cases to generate (5–6 images)
 
-**Additional traps** (1–2 images; map to nearest `scene_category`):
+| Priority | `uuid` | `scene_category` | Edge case | Why generate |
+|----------|--------|------------------|-----------|--------------|
+| P0 | `syn-building-01`, `syn-building-02` | `building_shadow` | Urban-canyon wall shadow; long afternoon tower shadow on sidewalk | Only category with zero real labels |
+| P0 | `syn-linkway-01` | `covered_walkway` | HDB sheltered linkway, continuous overhead cover | Real “covered” row is pavilion, not linkway |
+| P1 | `syn-mixed-building-01` | `mixed_sources` | Half building overhang, half open sky on same path | Real mixed rows are mostly tree/open |
+| P1 | `syn-highpath-01` | `open_exposure` | Wide sidewalk dominates lower frame; harsh midday sun | Real open rows are road-centric, low `sidewalk_pct` |
+| P2 | `syn-shelter-01` | `covered_walkway` | Bus-stop shelter shading a small pocket only | Localized cover (~shade 2–3); not in real set |
+| P2 | `syn-distant-01` | `open_exposure` | Green canopy ahead; foreground path in sun | Distant-canopy VLM trap |
 
-| Trap | Notes |
-|------|-------|
-| **Off-path shade** | Trees shade road/lawn; sidewalk exposed — VLM often over-scores |
-| **Distant canopy** | Green overhead in background; path in sun |
-| **Localized shelter** | Bus stop roof or umbrella shading a small pocket only |
-| **High sidewalk %** | Camera low; path fills bottom third of frame |
+**Skip for synthetics:** extra `tree_canopy`, off-path shade, dappled canopy, and `ambiguous_path` — already represented in real labels.
 
 ### Component: `eval/generate_images.py`
 
@@ -272,8 +267,8 @@ uv run python -m eval.generate_images --uuid syn-linkway-01
 ```text
 Photorealistic street-level photograph, eye height ~1.5m, Singapore tropical setting.
 {prompt}
-Concrete walkable path visible in the lower third of the frame.
-Afternoon lighting consistent with {hour}:00.
+Walkable concrete path occupies roughly {sidewalk_pct} of the lower frame; path is the visual subject, not the road lane.
+Lighting consistent with {hour}:00.
 No text overlays, no watermarks, no people.
 ```
 
@@ -295,9 +290,13 @@ Example rows:
 
 ```csv
 uuid,scene_category,prompt,hour,heading,sidewalk_pct,notes
-syn-linkway-01,covered_walkway,"Sheltered HDB walkway with overhead cover, concrete sidewalk in foreground",14,90,0.35,full overhead cover
-syn-offpath-01,tree_canopy,"Large trees shade the road lane but sidewalk on right is in direct sun",14,180,0.25,VLM trap - shade not on path
-syn-ambiguous-01,ambiguous_path,"Shared path with faded markings, unclear where pedestrians should walk",15,45,0.20,path ambiguity
+syn-building-01,building_shadow,"Narrow gap between HDB blocks, deep wall shadow covering most of sidewalk in foreground",14,270,0.30,intended shade 4-5
+syn-building-02,building_shadow,"Tall office tower casts long shadow across concrete sidewalk, opposite side in sun",17,90,0.25,intended shade 4
+syn-linkway-01,covered_walkway,"Sheltered HDB linkway with continuous overhead cover, walkable path fills lower third",14,90,0.40,intended shade 5
+syn-mixed-building-01,mixed_sources,"Left half of sidewalk under building overhang, right half open to sky",14,0,0.35,intended shade 3
+syn-highpath-01,open_exposure,"Wide sidewalk dominates lower half of frame, no trees, harsh midday sun",12,45,0.45,intended shade 1
+syn-shelter-01,covered_walkway,"Bus stop shelter shades only a 3m pocket; rest of sidewalk in direct sun",14,180,0.30,intended shade 2-3
+syn-distant-01,open_exposure,"Green tree canopy visible ahead but foreground sidewalk fully exposed",14,180,0.30,intended shade 1; distant canopy trap
 ```
 
 ### `data/synthetic_streetscapes.csv`
@@ -317,7 +316,7 @@ Same schema as `filtered_streetscapes.csv` plus `source=synthetic`. Use placehol
 
 1. Author fills `eval/data/synthetic_prompts.csv` for missing categories
 2. Run `eval/generate_images.py`; review images manually — re-roll or edit prompts if artifacts are obvious
-3. Add synthetic uuids to `eval/data/human_labels.csv` (pre-fill `scene_category`; label `shade_1to5`)
+3. Add synthetic uuids to `eval/data/human_labels.csv` (pre-fill `scene_category` from prompts; label `shade_1to5` using intended range in `notes`)
 4. Run `eval/score_eval.py` to score all uuids in `human_labels.csv` from `sample/` and `synthetic/`; write to `eval/data/scores.csv`
 5. Notebook joins real + synthetic metadata via `pd.concat`; filter by `source` for Tier A vs Tier C
 
@@ -508,7 +507,7 @@ No new dependencies required. Spearman via `pandas.Series.corr(method="spearman"
 2. Tier A reports VLM ρ and MAE against human labels (real images only)
 3. Tier B reports median run std and % high-variance images (10 × 3 runs)
 4. Tier C gallery shows ≥5 mismatch cases with images, `scene_category`, hour, sidewalk %, and `source`
-5. Optional: 6–8 synthetic images generated and labeled for underrepresented `scene_category` values
+5. Optional: 5–6 synthetic images generated and labeled, prioritizing `building_shadow` and true `covered_walkway` gaps
 6. README links to notebook and states methodology honestly
 7. Results may show VLM losing on some strata — that is acceptable and expected
 
@@ -519,7 +518,7 @@ No new dependencies required. Spearman via `pandas.Series.corr(method="spearman"
 | Task | Estimate |
 |------|----------|
 | Hand-label 30 images | 2–3 hrs |
-| Generate + label 6–8 synthetic images | 1–1.5 hrs |
+| Generate + label 5–6 synthetic images | 1–1.5 hrs |
 | Collect run variance (10 img × 3 runs) | ~45 min |
 | Build `eval/score_eval.py` + `eval/generate_images.py` | 1 hr |
 | Build notebook (Tiers A, B) | 1–1.5 hrs |

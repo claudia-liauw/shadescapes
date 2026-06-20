@@ -34,7 +34,7 @@ Do **not** call `run_scoring()` from eval — it is hard-wired to `exploration/`
 | `tests/test_score_eval.py` | Unit tests for score_eval (mocked API) |
 | `eval/data/` | Eval CSVs (labels, scores, variance, prompts) |
 | `eval/data/human_labels.csv` | ~30 uuids + `scene_category` + labels (author fills scores) |
-| `eval/data/synthetic_prompts.csv` | Optional gap-fill prompts (6–8 rows) |
+| `eval/data/synthetic_prompts.csv` | Optional gap-fill prompts (5–6 rows; see design spec) |
 | `eval/data/stability_sample.csv` | 10 uuids for Tier B |
 | `eval/data/scores.csv` | VLM outputs for eval set (separate from production) |
 | `eval/data/run_variance.csv` | Raw multi-run VLM scores (30 rows) |
@@ -922,11 +922,24 @@ EOF
 - Create: `data/images/synthetic/` (directory)
 - Create: `data/synthetic_streetscapes.csv` (generated)
 
-Skip this task entirely if time-constrained; Tier A/C still run on real images only.
+Skip this task entirely if time-constrained; Tier A/C still run on real images only. Real labels already cover `tree_canopy`, off-path shade, and `ambiguous_path`; synthetics fill `building_shadow` (0 real) and true linkway / high-`sidewalk_pct` gaps.
 
 - [ ] **Step 1: Create `eval/data/synthetic_prompts.csv`**
 
-Use the example rows from the design spec (6–8 rows covering `covered_walkway`, `building_shadow`, `tree_canopy`, `open_exposure`, `mixed_sources`, `ambiguous_path`).
+Copy the prioritized rows from the design spec. Target **5–6 images** filling real-label gaps (`building_shadow` has 0 real rows; `covered_walkway` is underrepresented). Skip extra `tree_canopy`, off-path shade, dappled canopy, and `ambiguous_path` — already covered in `human_labels.csv`.
+
+```csv
+uuid,scene_category,prompt,hour,heading,sidewalk_pct,notes
+syn-building-01,building_shadow,"Narrow gap between HDB blocks, deep wall shadow covering most of sidewalk in foreground",14,270,0.30,intended shade 4-5
+syn-building-02,building_shadow,"Tall office tower casts long shadow across concrete sidewalk, opposite side in sun",17,90,0.25,intended shade 4
+syn-linkway-01,covered_walkway,"Sheltered HDB linkway with continuous overhead cover, walkable path fills lower third",14,90,0.40,intended shade 5
+syn-mixed-building-01,mixed_sources,"Left half of sidewalk under building overhang, right half open to sky",14,0,0.35,intended shade 3
+syn-highpath-01,open_exposure,"Wide sidewalk dominates lower half of frame, no trees, harsh midday sun",12,45,0.45,intended shade 1
+syn-shelter-01,covered_walkway,"Bus stop shelter shades only a 3m pocket; rest of sidewalk in direct sun",14,180,0.30,intended shade 2-3
+syn-distant-01,open_exposure,"Green tree canopy visible ahead but foreground sidewalk fully exposed",14,180,0.30,intended shade 1; distant canopy trap
+```
+
+Omit `syn-distant-01` if limiting to 6 images.
 
 - [ ] **Step 2: Implement `eval/generate_images.py`**
 
@@ -948,13 +961,17 @@ IMAGEN_MODEL = "imagen-4.0-generate-001"
 
 PROMPT_TEMPLATE = """Photorealistic street-level photograph, eye height ~1.5m, Singapore tropical setting.
 {prompt}
-Concrete walkable path visible in the lower third of the frame.
-Afternoon lighting consistent with {hour}:00.
+Walkable concrete path occupies roughly {sidewalk_pct} of the lower frame; path is the visual subject, not the road lane.
+Lighting consistent with {hour}:00.
 No text overlays, no watermarks, no people."""
 
 
 def build_image_prompt(row: pd.Series) -> str:
-    return PROMPT_TEMPLATE.format(prompt=row["prompt"], hour=int(row["hour"]))
+    return PROMPT_TEMPLATE.format(
+        prompt=row["prompt"],
+        hour=int(row["hour"]),
+        sidewalk_pct=row["sidewalk_pct"],
+    )
 
 
 def generate_one(uuid: str, row: pd.Series, force: bool = False) -> bool:
@@ -1039,7 +1056,7 @@ Review images manually. Re-roll with `--uuid syn-linkway-01 --force` if needed.
 
 - [ ] **Step 4: Add synthetic uuids to `human_labels.csv`, label, and score**
 
-Add rows for each synthetic uuid with `scene_category` pre-filled from `synthetic_prompts.csv`. Fill `shade_1to5`. Then:
+Add rows for each synthetic uuid with `scene_category` pre-filled from `synthetic_prompts.csv`. Set `shade_1to5` using the intended range in the prompt `notes` column. Then:
 
 ```bash
 uv run python -m eval.score_eval
@@ -1359,7 +1376,7 @@ EOF
 | `eval/data/human_labels.csv` with `scene_category` | Task 3 |
 | Images from `sample/` + `synthetic/`, not `exploration/` | Task 2, Task 4, Task 6 |
 | Composite baseline dropped | Task 1 (no composite functions) |
-| Optional synthetic gap-fill | Task 5 |
+| Optional synthetic gap-fill (5–6 images; `building_shadow` + linkway priority) | Task 5 |
 | `eval/data/run_variance.csv` schema | Task 4 |
 | Notebook Tier A before Tier B | Task 6 |
 | README integration | Task 7 |
