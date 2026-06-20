@@ -29,8 +29,19 @@ def test_discover_images_empty(tmp_path, monkeypatch):
 
 def test_build_prompt_includes_heading():
     prompt = build_prompt(heading=270.0)
-    assert "270" in prompt
+    assert "heading 270 degrees" in prompt
     assert "pedestrian_shade_score" in prompt
+
+
+def test_build_prompt_includes_hour():
+    prompt = build_prompt(heading=180.0, hour=7.0)
+    assert "7:00" in prompt
+
+
+def test_build_prompt_handles_missing_information():
+    prompt = build_prompt()
+    assert "heading not provided" in prompt
+    assert "hour not provided" in prompt
 
 
 def test_parse_vlm_response_valid_json():

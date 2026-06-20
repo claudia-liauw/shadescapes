@@ -26,16 +26,32 @@ def discover_images() -> list[str]:
     return [path.name for path in sorted(IMAGES_DIR.glob("*.jpeg"))]
 
 
-def build_prompt(heading: float | None = None) -> str:
-    heading_line = (
-        f"The camera heading is {heading:.0f} degrees. Assume tropical afternoon sun from the west/southwest relative to this view.\n"
-        if heading is not None and not pd.isna(heading)
-        else "Assume tropical afternoon sun from the west/southwest.\n"
+def _format_context_line(heading: float | None = None, hour: float | None = None) -> str:
+    if heading is not None and not pd.isna(heading):
+        heading_text = f"{heading:.0f} degrees"
+    else:
+        heading_text = "not provided"
+    if hour is not None and not pd.isna(hour):
+        try:
+            hour_int = int(float(hour))
+        except (ValueError, TypeError):
+            hour_int = None
+    else:
+        hour_int = None
+    hour_text = f"{hour_int}:00 local time" if hour_int is not None else "not provided"
+    return (
+        "Context: tropical Singapore; "
+        f"heading {heading_text}; "
+        f"hour {hour_text}.\n"
     )
+
+
+def build_prompt(heading: float | None = None, hour: float | None = None) -> str:
+    context_line = _format_context_line(heading, hour)
     return (
         "You are assessing pedestrian shade on the sidewalk in this street-level photo.\n"
-        "Context: Singapore, 2–4pm, hot afternoon. Score how shaded the walkable pedestrian path is, not overall scene aesthetics.\n"
-        f"{heading_line}"
+        f"{context_line}"
+        "Score how shaded the walkable pedestrian path is, not overall scene aesthetics.\n"
         "Respond with JSON only, no markdown, using exactly this schema:\n"
         "{\n"
         '  "pedestrian_shade_score": 0.72,\n'
@@ -72,7 +88,7 @@ def _call_gemini(image_path: Path, prompt: str) -> str:
 
 
 def score_image(image_path: Path, metadata_row: pd.Series, retry: bool = True) -> ShadeScore:
-    prompt = build_prompt(metadata_row.get("heading"))
+    prompt = build_prompt(metadata_row.get("heading"), metadata_row.get("hour"))
     raw = _call_gemini(image_path, prompt)
     try:
         return parse_vlm_response(raw)
