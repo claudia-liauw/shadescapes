@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+from pandas.errors import EmptyDataError
 from google import genai
 from PIL import Image
 
@@ -91,7 +92,19 @@ def load_existing_scores() -> pd.DataFrame:
                 "scored_at",
             ]
         )
-    return pd.read_csv(config.SCORES_CSV)
+    try:
+        return pd.read_csv(config.SCORES_CSV)
+    except EmptyDataError:
+        return pd.DataFrame(
+            columns=[
+                "uuid",
+                "pedestrian_shade_score",
+                "shade_sources",
+                "confidence",
+                "reasoning",
+                "scored_at",
+            ]
+        )
 
 
 def _write_scores(df: pd.DataFrame) -> None:

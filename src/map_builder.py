@@ -4,6 +4,7 @@ from pathlib import Path
 
 import folium
 import pandas as pd
+from pandas.errors import EmptyDataError
 
 from src import config
 
@@ -36,7 +37,19 @@ def _load_scores() -> pd.DataFrame:
                 "scored_at",
             ]
         )
-    return pd.read_csv(config.SCORES_CSV)
+    try:
+        return pd.read_csv(config.SCORES_CSV)
+    except EmptyDataError:
+        return pd.DataFrame(
+            columns=[
+                "uuid",
+                "pedestrian_shade_score",
+                "shade_sources",
+                "confidence",
+                "reasoning",
+                "scored_at",
+            ]
+        )
 
 
 def load_map_points() -> pd.DataFrame:

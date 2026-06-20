@@ -19,6 +19,13 @@ def test_marker_color_low_shade():
     assert marker_color(0.2) == "#e74c3c"
 
 
+def test_load_map_points_with_empty_scores_file(data_dir):
+    (data_dir / "data" / "scores.csv").write_text("")
+    points = load_map_points()
+    assert len(points) == 2
+    assert points["pedestrian_shade_score"].isna().all()
+
+
 def test_load_map_points_joins_images(data_dir):
     points = load_map_points()
     assert len(points) == 2
