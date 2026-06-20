@@ -12,9 +12,9 @@ The GovTech brief requires an honest evaluation with a justified methodology. We
 
 **Primary claim:** VLM shade scores agree with human judgment on a hand-labeled sample of streetscape images.
 
-**Unit of evaluation:** Individual streetscape images (~30 hand-labeled from the corridor dataset).
+**Unit of evaluation:** Individual streetscape images (~30 hand-labeled from the corridor dataset, optionally supplemented by ~6–8 synthetic gap-fill images).
 
-**Not claiming:** Island-wide accuracy, time-of-day precision, segment/route-level performance, or that the VLM is ground truth.
+**Not claiming:** Island-wide accuracy, time-of-day precision, segment/route-level performance, synthetic-image realism, or that the VLM is ground truth.
 
 ---
 
@@ -55,11 +55,15 @@ Metrics in `results.md`; no inline images.
 ## Architecture
 
 ```text
-human_labels.csv ──┐
-scores.csv ────────┤
-run_variance.csv ──┼──► evaluation.ipynb ──► saved outputs (tables, charts, image gallery)
-filtered_streetscapes.csv ──┘
-data/images/exploration/{uuid}.jpeg ──► Tier C inline display
+human_labels.csv ──────────────┐
+scores.csv ────────────────────┤
+run_variance.csv ──────────────┼──► evaluation.ipynb ──► saved outputs (tables, charts, image gallery)
+filtered_streetscapes.csv ─────┤
+synthetic_streetscapes.csv ────┘
+data/images/exploration/{uuid}.jpeg ──► Tier C inline display (real)
+data/images/synthetic/{uuid}.jpeg ────► Tier C inline display (synthetic)
+
+eval/synthetic_prompts.csv ──► eval/generate_images.py ──► synthetic images + metadata
 ```
 
 No separate eval service or API. The notebook imports from `src.config` for paths (`METADATA_CSV`, `SCORES_CSV`, `IMAGES_DIR`) to stay aligned with the app.
@@ -89,6 +93,8 @@ Optional `eval/run_eval.py` may hold pure functions (join, metrics, mismatch fla
 **Implementation:** `pandas.Series.corr(method="spearman")` for ρ; `(pred - human_norm).abs().mean()` for MAE.
 
 **Scores used:** Single-run values from `data/scores.csv` (the production scoring path). Run stability is assessed separately in Tier B.
+
+**Scope:** Tier A headline metrics use **real** Mapillary images only. Synthetic gap-fill images (see below) are excluded from ρ and MAE unless explicitly noted as a supplementary table.
 
 ### Tier B — Run stability (VLM reliability)
 
@@ -134,17 +140,18 @@ Target ~8–12 flagged images from 30 labels. Adjust threshold if needed to hit 
 | Field | Source | Purpose |
 |-------|--------|---------|
 | `scene_category` | `human_labels.csv` | Primary grouping — do failures cluster by scene type? |
-| `hour` | `filtered_streetscapes.csv` | Time-of-day context for the capture |
-| `sidewalk_pct` | `filtered_streetscapes.csv` | How much of the frame is walkable sidewalk |
-| `heading` | `filtered_streetscapes.csv` | Camera orientation context |
-| `lat`, `lon` | `filtered_streetscapes.csv` | Spatial position on corridor |
+| `source` | metadata CSV | `mapillary` or `synthetic` — flag generated images |
+| `hour` | metadata CSV | Time-of-day context for the capture |
+| `sidewalk_pct` | metadata CSV | How much of the frame is walkable sidewalk |
+| `heading` | metadata CSV | Camera orientation context |
+| `lat`, `lon` | metadata CSV | Spatial position on corridor (placeholder for synthetic) |
 | VLM `shade_sources`, `reasoning`, `confidence` | `scores.csv` | Qualitative explanation |
 
 **Summary table:** Mismatch counts grouped by `scene_category`.
 
 **Visual gallery:** For each flagged image, display inline in the notebook:
-1. Thumbnail from `data/images/exploration/{uuid}.jpeg`
-2. Scores card: human, VLM, error
+1. Thumbnail from `data/images/exploration/{uuid}.jpeg` or `data/images/synthetic/{uuid}.jpeg`
+2. Scores card: human, VLM, error, `source`
 3. Metadata line: `scene_category`, hour, sidewalk %, heading
 4. VLM reasoning (and optional author notes from `human_labels.csv`)
 5. **Run stability** (if image is in Tier B sample): `run_std`, `run_range` from `run_variance.csv`
@@ -173,6 +180,113 @@ Group gallery sections by `scene_category` with markdown headers.
 
 ---
 
+## Synthetic gap-fill images
+
+The corridor dataset (~53 Mapillary images) is skewed toward campus/parking scenes, afternoon hours (14:00–15:00), and low `sidewalk_pct` (median ~2.5%). Several `scene_category` values and known VLM failure modes are underrepresented. Generate a small set of synthetic streetscapes to stress-test Tier C without inflating Tier A claims.
+
+### Gaps in real data
+
+| Signal | What we have | Likely missing |
+|--------|--------------|----------------|
+| **Time** | Mostly 14:00–15:00 | Low sun (7–9), harsh noon (12), long afternoon shadows (17–18) |
+| **Framing** | Low `sidewalk_pct`; road-centric | Walkable path dominates lower frame (~30–50%) |
+| **Setting** | Campus, parking, hospital | HDB linkway, shopfront awning, bus stop, urban street corridor |
+| **`scene_category`** | Sparse institutional outdoor shots | Several categories below may be absent |
+
+### Edge cases to generate (first pass: 6–8 images)
+
+| `scene_category` | Edge case | Why generate |
+|------------------|-----------|--------------|
+| `covered_walkway` | HDB sheltered linkway, MRT overhead cover | Singapore-specific; rare in campus captures |
+| `building_shadow` | Narrow gap between towers, deep wall shadow on sidewalk | Urban-canyon geometry |
+| `tree_canopy` | Street-tree row with **dappled** shade on path | Park lawn trees ≠ functional street shade |
+| `open_exposure` | Wide arterial, no trees, midday glare | Path-focused open scene |
+| `mixed_sources` | Half building shadow, half open sky on same path | Partial-shade judgment |
+| `ambiguous_path` | Shared path, construction barriers, unclear walk zone | Classic VLM failure mode |
+
+**Additional traps** (1–2 images; map to nearest `scene_category`):
+
+| Trap | Notes |
+|------|-------|
+| **Off-path shade** | Trees shade road/lawn; sidewalk exposed — VLM often over-scores |
+| **Distant canopy** | Green overhead in background; path in sun |
+| **Localized shelter** | Bus stop roof or umbrella shading a small pocket only |
+| **High sidewalk %** | Camera low; path fills bottom third of frame |
+
+### Component: `eval/generate_images.py`
+
+CLI entrypoint. Reads `eval/synthetic_prompts.csv`, calls an image-generation model (Gemini Imagen via existing `google-genai` client), writes images and metadata. Skips existing uuids unless `--force`.
+
+```bash
+uv run python -m eval.generate_images
+uv run python -m eval.generate_images --uuid syn-linkway-01
+```
+
+**Responsibilities:**
+
+1. Read prompt rows from `eval/synthetic_prompts.csv`
+2. Generate image via API; save to `data/images/synthetic/{uuid}.jpeg`
+3. Append metadata row to `data/synthetic_streetscapes.csv` (`source=synthetic`)
+4. Print summary of created/skipped uuids
+
+**Prompt template** (keep synthetic images comparable):
+
+```text
+Photorealistic street-level photograph, eye height ~1.5m, Singapore tropical setting.
+{prompt}
+Concrete walkable path visible in the lower third of the frame.
+Afternoon lighting consistent with {hour}:00.
+No text overlays, no watermarks, no people.
+```
+
+### `eval/synthetic_prompts.csv`
+
+Author-curated gap list. `scene_category` pre-fills `human_labels.csv`.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `uuid` | string | e.g. `syn-linkway-01` |
+| `scene_category` | string | One of the `scene_category` options above |
+| `prompt` | string | Scene description passed to image model |
+| `hour` | int | Metadata for scoring prompt and Tier C display |
+| `heading` | float | Camera bearing (degrees) |
+| `sidewalk_pct` | float | Author estimate for metadata (0–1) |
+| `notes` | string | Intended failure mode or eval purpose |
+
+Example rows:
+
+```csv
+uuid,scene_category,prompt,hour,heading,sidewalk_pct,notes
+syn-linkway-01,covered_walkway,"Sheltered HDB walkway with overhead cover, concrete sidewalk in foreground",14,90,0.35,full overhead cover
+syn-offpath-01,tree_canopy,"Large trees shade the road lane but sidewalk on right is in direct sun",14,180,0.25,VLM trap - shade not on path
+syn-ambiguous-01,ambiguous_path,"Shared path with faded markings, unclear where pedestrians should walk",15,45,0.20,path ambiguity
+```
+
+### `data/synthetic_streetscapes.csv`
+
+Same schema as `filtered_streetscapes.csv` plus `source=synthetic`. Use placeholder `lat`/`lon` on the corridor (or leave empty); not used for map demo.
+
+| Column | Notes |
+|--------|-------|
+| `uuid` | Matches `synthetic_prompts.csv` |
+| `source` | Always `synthetic` |
+| `orig_id` | Empty |
+| `lat`, `lon` | Optional placeholder coordinates |
+| `hour`, `heading`, `sidewalk_pct` | Copied from prompt file |
+| `place` | Descriptive tag, e.g. `synthetic_linkway` |
+
+### Workflow
+
+1. Author fills `eval/synthetic_prompts.csv` for missing categories
+2. Run `eval/generate_images.py`; review images manually — re-roll or edit prompts if artifacts are obvious
+3. Add synthetic uuids to `eval/human_labels.csv` (pre-fill `scene_category`; label `shade_1to5`)
+4. Score via production path (`src.score.score_image`) with synthetic metadata; append to `data/scores.csv`
+5. Notebook joins real + synthetic metadata via `pd.concat`; filter by `source` for Tier A vs Tier C
+
+**Framing:** Synthetic images are supplementary stress tests for Tier C category coverage. Disclose in README limitations; do not include in map demo unless explicitly desired.
+
+---
+
 ## Data Files
 
 ### `eval/human_labels.csv`
@@ -185,6 +299,8 @@ Hand-curated ground truth. Pre-fill `uuid` from images that have VLM scores; lea
 | `shade_1to5` | int (1–5) | Human shade rating; empty until labeled |
 | `scene_category` | string | Scene type for Tier C grouping; assign while labeling (see options below) |
 | `notes` | string | Optional free-text (e.g. "dappled light on far lane, VLM missed") |
+
+Real images: pre-fill `uuid` from Mapillary images that have VLM scores. Synthetic images: add uuids from `eval/synthetic_prompts.csv` after generation; `scene_category` can be pre-filled from that file.
 
 **`scene_category` options** — pick the single best fit for the walkable path in the image:
 
@@ -226,12 +342,14 @@ Raw multi-run VLM outputs for Tier B.
 | File | Key columns |
 |------|-------------|
 | `data/scores.csv` | `uuid`, `pedestrian_shade_score`, `shade_sources`, `confidence`, `reasoning` |
-| `data/filtered_streetscapes.csv` | `uuid`, `lat`, `lon`, `heading`, `hour`, `sidewalk_pct`, `place` |
-| `data/images/exploration/{uuid}.jpeg` | Image files for Tier C display |
+| `data/filtered_streetscapes.csv` | `uuid`, `lat`, `lon`, `heading`, `hour`, `sidewalk_pct`, `place` (`source=mapillary` implicit) |
+| `data/synthetic_streetscapes.csv` | Same schema; `source=synthetic` |
+| `data/images/exploration/{uuid}.jpeg` | Real image files for Tier C display |
+| `data/images/synthetic/{uuid}.jpeg` | Synthetic image files for Tier C display |
 
 ### Join logic
 
-Inner join on `uuid` across human labels, scores, and metadata. Eval set = labeled images that also have VLM scores. Report actual N in the notebook.
+Concatenate `filtered_streetscapes.csv` and `synthetic_streetscapes.csv` into a single metadata frame (add `source` column: `mapillary` / `synthetic`). Inner join on `uuid` across human labels, scores, and metadata. Eval set = labeled images that also have VLM scores. Report actual N and `source` breakdown in the notebook.
 
 ---
 
@@ -242,11 +360,11 @@ Committed **with saved cell outputs** (images, tables, charts visible offline).
 | Section | Content |
 |---------|---------|
 | **1. Intro** | Methodology summary, eval claim, limitations |
-| **2. Setup** | Imports, load CSVs, join, compute `human_norm` |
-| **3. Tier A** | VLM ρ and MAE; optional scatter (human vs VLM with 45° line) |
+| **2. Setup** | Imports, load CSVs, concat metadata, join, compute `human_norm` |
+| **3. Tier A** | VLM ρ and MAE on real images; optional scatter (human vs VLM with 45° line) |
 | **4. Tier B** | Run stability summary from `run_variance.csv`; per-image std/range table |
-| **5. Tier C** | Mismatch flags; summary by `scene_category`; inline image gallery (incl. run_std where available) |
-| **6. Takeaways** | Headline result, stability note, 1–2 category-level patterns, top failure modes |
+| **5. Tier C** | Mismatch flags; summary by `scene_category`; inline gallery (real + synthetic, incl. `source`) |
+| **6. Takeaways** | Headline result, stability note, category-level patterns, synthetic gap-fill note |
 
 **Run instructions** (for README):
 
@@ -265,7 +383,7 @@ Eval section (~150–200 words):
 2. Sample size and corridor context
 3. Headline numbers (VLM ρ and MAE vs human labels)
 4. One Tier C insight with link to `eval/evaluation.ipynb`
-5. Limitations: single rater, N≈30, static snapshots, no solar geometry, single-run scores in Tier A (stability checked on 10-image subset)
+5. Limitations: single rater, N≈30 real images, static snapshots, no solar geometry, single-run scores in Tier A (stability checked on 10-image subset), optional synthetic gap-fill images excluded from headline metrics
 6. One-line stability result: median run-to-run std from Tier B
 
 PROCESS.md: labeling experience, surprising mismatches from Tier C gallery, whether high-variance images aligned with ambiguous cases.
@@ -287,6 +405,8 @@ No new dependencies required. Spearman via `pandas.Series.corr(method="spearman"
 | Labeled uuid missing from scores | Exclude from eval; print warning listing uuids |
 | Labeled uuid missing from metadata | Exclude; print warning |
 | Image file missing for mismatch | Show placeholder text in gallery cell; do not crash notebook |
+| `synthetic_streetscapes.csv` missing | Tier C runs on real images only; print warning |
+| `generate_images.py` API failure | Skip uuid; print error; do not write partial metadata |
 | `run_variance.csv` missing or incomplete | Tier B section shows warning; Tier A/C still run |
 | Fewer than 10 scored images | Notebook runs but README notes eval is preliminary |
 
@@ -306,11 +426,12 @@ No new dependencies required. Spearman via `pandas.Series.corr(method="spearman"
 ## Success Criteria
 
 1. Notebook runs end-to-end on committed data with saved outputs
-2. Tier A reports VLM ρ and MAE against human labels
+2. Tier A reports VLM ρ and MAE against human labels (real images only)
 3. Tier B reports median run std and % high-variance images (10 × 3 runs)
-4. Tier C gallery shows ≥5 mismatch cases with images, `scene_category`, hour, and sidewalk %
-5. README links to notebook and states methodology honestly
-6. Results may show VLM losing on some strata — that is acceptable and expected
+4. Tier C gallery shows ≥5 mismatch cases with images, `scene_category`, hour, sidewalk %, and `source`
+5. Optional: 6–8 synthetic images generated and labeled for underrepresented `scene_category` values
+6. README links to notebook and states methodology honestly
+7. Results may show VLM losing on some strata — that is acceptable and expected
 
 ---
 
@@ -319,8 +440,10 @@ No new dependencies required. Spearman via `pandas.Series.corr(method="spearman"
 | Task | Estimate |
 |------|----------|
 | Hand-label 30 images | 2–3 hrs |
+| Generate + label 6–8 synthetic images | 1–1.5 hrs |
 | Collect run variance (10 img × 3 runs) | ~45 min |
+| Build `eval/generate_images.py` | 45 min |
 | Build notebook (Tiers A, B) | 1–1.5 hrs |
 | Tier C gallery + category summary | 1–1.5 hrs |
 | Execute, save outputs, README link | 30 min |
-| **Total** | **~6–7 hrs** |
+| **Total** | **~7–8 hrs** |
