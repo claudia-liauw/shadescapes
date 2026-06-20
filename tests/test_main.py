@@ -27,11 +27,25 @@ def test_index_renders_map(client):
     assert "Run Shade Scoring" in response.text
 
 
-def test_index_with_missing_metadata(client, data_dir):
+def test_index_with_missing_metadata_file(client, data_dir):
     (data_dir / "data" / "filtered_streetscapes.csv").unlink()
     response = client.get("/")
     assert response.status_code == 200
     assert "ShadeScapes" in response.text
+
+
+def test_index_with_missing_metadata_optional_fields(client, data_dir):
+    metadata_path = data_dir / "data" / "filtered_streetscapes.csv"
+    minimal_metadata = pd.DataFrame(
+        [
+            {"uuid": "aaa-111", "lat": 1.3000, "lon": 103.8000},
+        ]
+    )
+    minimal_metadata.to_csv(metadata_path, index=False)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "ShadeScapes" in response.text
+    assert "folium-map" in response.text
 
 
 def test_image_route_404(client):
