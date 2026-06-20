@@ -1,1 +1,81 @@
-/* Placeholder styles for Task 6 */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1f2933;
+  background: #f7f9fb;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 20px;
+  background: #ffffff;
+  border-bottom: 1px solid #d9e2ec;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  color: #52606d;
+  font-size: 0.95rem;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+#score-btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #147d64;
+  color: #ffffff;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+#score-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.status {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.status-success {
+  color: #147d64;
+}
+
+.status-error {
+  color: #ba2525;
+}
+
+.map {
+  min-height: 80vh;
+}
+
+@media (max-width: 720px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .actions {
+    align-items: flex-start;
+    width: 100%;
+  }
+}

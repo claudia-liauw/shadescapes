@@ -2,16 +2,52 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ShadeScapes</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <header>
-    <h1>ShadeScapes</h1>
-    <button>Run Shade Scoring</button>
+  <header class="header">
+    <div>
+      <h1>ShadeScapes</h1>
+      <p class="subtitle">Pedestrian shade index for a Singapore street corridor</p>
+    </div>
+    <div class="actions">
+      <button id="score-btn" type="button">Run Shade Scoring</button>
+      <p id="status" class="status" aria-live="polite"></p>
+    </div>
   </header>
+
   <main>
-    {{ map_html|safe }}
+    <div id="map" class="map">{{ map_html|safe }}</div>
   </main>
+
+  <script>
+    const button = document.getElementById("score-btn");
+    const status = document.getElementById("status");
+
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      button.textContent = "Scoring…";
+      status.textContent = "";
+      status.className = "status";
+
+      try {
+        const response = await fetch("/api/score", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || "Scoring failed");
+        }
+        status.textContent = `Scored ${data.scored}, skipped ${data.skipped}. Reloading map…`;
+        status.className = "status status-success";
+        window.location.reload();
+      } catch (error) {
+        status.textContent = error.message;
+        status.className = "status status-error";
+        button.disabled = false;
+        button.textContent = "Run Shade Scoring";
+      }
+    });
+  </script>
 </body>
 </html>
