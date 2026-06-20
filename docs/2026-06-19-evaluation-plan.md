@@ -922,6 +922,8 @@ EOF
 - Create: `data/images/synthetic/` (directory)
 - Create: `data/synthetic_streetscapes.csv` (generated)
 
+**Manual generation note:** Task 5 Step 3 can be skipped when the assets are created manually. In this case the images were generated in Google AI Studio (nano-banana generator) by pasting each prompt from `eval/data/synthetic_prompts.csv` into the UI, capturing the resulting JPEGs, and saving them under `data/images/synthetic/{uuid}.jpeg`. Synthetic metadata was also exported/constructed directly into `data/synthetic_streetscapes.csv`. Record the session details (platform, model, date/rerolls) so anyone rerunning the plan understands how to recreate or audit the images.
+
 Skip this task entirely if time-constrained; Tier A/C still run on real images only. Real labels already cover `tree_canopy`, off-path shade, and `ambiguous_path`; synthetics fill `building_shadow` (0 real) and true linkway / high-`sidewalk_pct` gaps.
 
 - [ ] **Step 1: Create `eval/data/synthetic_prompts.csv`**

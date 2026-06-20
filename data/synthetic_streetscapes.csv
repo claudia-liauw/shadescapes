@@ -1,0 +1,8 @@
+uuid,source,orig_id,lat,lon,hour,heading,place,sidewalk_pct
+syn-building-01,synthetic,,1.30,103.80,14,270,synthetic_building_shadow,0.30
+syn-building-02,synthetic,,1.30,103.80,17,90,synthetic_building_shadow,0.25
+syn-linkway-01,synthetic,,1.30,103.80,14,90,synthetic_covered_walkway,0.40
+syn-mixed-building-01,synthetic,,1.30,103.80,14,0,synthetic_mixed_sources,0.35
+syn-highpath-01,synthetic,,1.30,103.80,12,45,synthetic_open_exposure,0.45
+syn-shelter-01,synthetic,,1.30,103.80,14,180,synthetic_covered_walkway,0.30
+syn-distant-01,synthetic,,1.30,103.80,14,180,synthetic_open_exposure,0.30
