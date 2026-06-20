@@ -7,7 +7,7 @@ from fastapi.templating import Jinja2Templates
 
 from src import config
 from src.map_builder import build_map, render_map_html
-from src.models import MissingApiKeyError, NoImagesError
+from src.models import MissingApiKeyError, NoImagesError, NoMetadataError
 from src.score import run_scoring
 
 app = FastAPI(title="ShadeScapes")
@@ -39,6 +39,8 @@ def score_images(force: bool = Query(default=False)):
     except MissingApiKeyError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except NoImagesError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except NoMetadataError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 

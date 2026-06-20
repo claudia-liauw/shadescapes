@@ -20,5 +20,9 @@ class NoImagesError(Exception):
     """Raised when the exploration image directory has no JPEG files."""
 
 
+class NoMetadataError(Exception):
+    """Raised when filtered_streetscapes.csv is missing."""
+
+
 class MissingApiKeyError(Exception):
     """Raised when GOOGLE_API_KEY is not set."""

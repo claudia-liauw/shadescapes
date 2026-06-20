@@ -51,6 +51,13 @@ def test_image_route_rejects_path_traversal(client):
     assert response.status_code == 404
 
 
+def test_score_endpoint_missing_metadata(client, data_dir, monkeypatch):
+    (data_dir / "data" / "filtered_streetscapes.csv").unlink()
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    response = client.post("/api/score")
+    assert response.status_code == 400
+
+
 @patch("src.main.run_scoring")
 def test_score_endpoint_success(mock_run_scoring, client):
     mock_run_scoring.return_value = ScoreSummary(scored=2, skipped=1, errors=[])

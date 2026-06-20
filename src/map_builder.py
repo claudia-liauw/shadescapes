@@ -8,6 +8,7 @@ import pandas as pd
 from pandas.errors import EmptyDataError
 
 from src import config
+from src.score import load_metadata
 
 
 def marker_color(score: float | None) -> str:
@@ -54,10 +55,8 @@ def _load_scores() -> pd.DataFrame:
 
 
 def load_map_points() -> pd.DataFrame:
-    try:
-        metadata = pd.read_csv(config.METADATA_CSV)
-    except FileNotFoundError:
-        # First-time setup: no metadata file yet; build_map() renders an empty map.
+    metadata = load_metadata()
+    if metadata.empty:
         return pd.DataFrame()
     scores = _load_scores()
     image_uuids = _discover_image_uuids(config.IMAGES_DIR)

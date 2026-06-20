@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from src.models import MissingApiKeyError, NoImagesError, ShadeScore
+from src.models import MissingApiKeyError, NoImagesError, NoMetadataError, ShadeScore
 from src.score import (
     build_prompt,
     discover_images,
@@ -168,6 +168,13 @@ def test_run_scoring_skips_existing(mock_score_image, data_dir, monkeypatch):
     assert summary.scored == 0
     assert summary.skipped == 2
     mock_score_image.assert_not_called()
+
+
+def test_run_scoring_missing_metadata(data_dir, monkeypatch):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    (data_dir / "data" / "filtered_streetscapes.csv").unlink()
+    with pytest.raises(NoMetadataError):
+        run_scoring()
 
 
 def test_run_scoring_no_images(tmp_path, monkeypatch):

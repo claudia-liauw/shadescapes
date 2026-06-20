@@ -10,7 +10,7 @@ from PIL import Image
 from pydantic import ValidationError
 
 from src import config
-from src.models import MissingApiKeyError, NoImagesError, ScoreSummary, ShadeScore
+from src.models import MissingApiKeyError, NoImagesError, NoMetadataError, ScoreSummary, ShadeScore
 
 IMAGES_DIR = config.IMAGES_DIR
 METADATA_CSV = config.METADATA_CSV
@@ -81,6 +81,13 @@ def score_image(image_path: Path, metadata_row: pd.Series, retry: bool = True) -
         return parse_vlm_response(raw)
 
 
+def load_metadata() -> pd.DataFrame:
+    try:
+        return pd.read_csv(METADATA_CSV)
+    except (FileNotFoundError, EmptyDataError):
+        return pd.DataFrame()
+
+
 def load_existing_scores() -> pd.DataFrame:
     if not SCORES_CSV.exists():
         return pd.DataFrame(
@@ -122,8 +129,10 @@ def run_scoring(force: bool = False) -> ScoreSummary:
     if not images:
         raise NoImagesError(f"No images found in {IMAGES_DIR}")
 
-    metadata = pd.read_csv(METADATA_CSV)
-    metadata_by_uuid = metadata.set_index("uuid")
+    if not METADATA_CSV.exists():
+        raise NoMetadataError(f"{METADATA_CSV} not found")
+
+    metadata_rows = {str(row["uuid"]): row for _, row in load_metadata().iterrows()}
     existing = load_existing_scores()
     existing_uuids = set(existing["uuid"].astype(str)) if not existing.empty else set()
 
@@ -138,7 +147,7 @@ def run_scoring(force: bool = False) -> ScoreSummary:
 
     for image_path in image_paths:
         uuid = image_path.stem
-        if uuid not in metadata_by_uuid.index:
+        if uuid not in metadata_rows:
             skipped_count += 1
             errors.append(f"{uuid}: no metadata row in filtered_streetscapes.csv")
             continue
@@ -148,7 +157,7 @@ def run_scoring(force: bool = False) -> ScoreSummary:
             continue
 
         try:
-            result = score_image(image_path, metadata_by_uuid.loc[uuid])
+            result = score_image(image_path, metadata_rows[uuid])
             rows_by_uuid[uuid] = {
                 "uuid": uuid,
                 "pedestrian_shade_score": result.pedestrian_shade_score,
