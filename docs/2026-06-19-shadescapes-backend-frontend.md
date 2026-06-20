@@ -999,6 +999,8 @@ def get_image(filename: str):
     return FileResponse(image_path, media_type="image/jpeg")
 ```
 
+> **Note:** `templates/index.html` and `static/style.css` currently contain minimal markup (header + button and placeholder styles) so Task 6 tests can render the page. Task 7 will replace these files with the full UI and styling described in the next section.
+
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_main.py -v`
