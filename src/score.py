@@ -7,6 +7,7 @@ import pandas as pd
 from pandas.errors import EmptyDataError
 from google import genai
 from PIL import Image
+from pydantic import ValidationError
 
 from src import config
 from src.models import MissingApiKeyError, NoImagesError, ScoreSummary, ShadeScore
@@ -69,10 +70,10 @@ def _call_gemini(image_path: Path, prompt: str) -> str:
 
 def score_image(image_path: Path, metadata_row: pd.Series, retry: bool = True) -> ShadeScore:
     prompt = build_prompt(metadata_row.get("heading"))
+    raw = _call_gemini(image_path, prompt)
     try:
-        raw = _call_gemini(image_path, prompt)
         return parse_vlm_response(raw)
-    except Exception:
+    except (json.JSONDecodeError, ValidationError):
         if not retry:
             raise
         retry_prompt = prompt + "\nReturn valid JSON only. No prose outside the JSON object."
