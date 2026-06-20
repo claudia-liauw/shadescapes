@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a notebook-based evaluation (`eval/evaluation.ipynb`) that scores a curated eval set via `eval/score_eval.py` into `eval/data/scores.csv`, reports Tier A (VLM vs human on real images), Tier B (run stability), and Tier C (mismatch gallery grouped by `scene_category`), with optional synthetic gap-fill images.
+**Goal:** Build a notebook-based evaluation (`eval/evaluation.ipynb`) that scores a curated eval set via `eval/score_eval.py` into `eval/data/scores.csv`, reports Tier A (VLM vs human on real images), Tier B (run stability), and Tier C (per-image deviation bar chart by `scene_category` coloured by `source`, plus image gallery of all labeled images sorted by deviation), with optional synthetic gap-fill images.
 
 **Architecture:** Pure join/metric logic lives in `eval/metrics.py` (unit-tested). Scoring is centralized in `src/score.py`: `score_image` (Gemini call + parse), `load_metadata(csv_path)`, `load_existing_scores(csv_path)`, `build_score_row`, and **`run_scoring_batch`** (parallel `ThreadPoolExecutor`, up to 15 concurrent API calls). Production `run_scoring()` discovers images in `exploration/` and writes `data/scores.csv`. Eval scripts build their own `to_score` lists and call the same batch runner:
 
@@ -1210,27 +1210,85 @@ else:
 ```markdown
 ## Tier C — Mismatch analysis
 
-Images where VLM error exceeds **0.25** vs human labels. Grouped by `scene_category`. Includes real and synthetic images; check `source` when interpreting.
+Bar chart of **all** labeled images by `scene_category`, coloured by `source` (real vs synthetic). The dashed line marks the mismatch threshold. The gallery below shows all images, sorted from most to least deviation.
 ```
 
-**Cell 8 (code) — Tier C summary tables**
+**Cell 8 (code) — Tier C bar chart and mismatch summary**
 
 ```python
 mismatches = flag_mismatches(eval_frame, threshold=MISMATCH_THRESHOLD)
 print(f"Mismatches: {len(mismatches)} (threshold={MISMATCH_THRESHOLD})")
 
+if not eval_frame.empty:
+    source_colors = {"mapillary": "C0", "synthetic": "C1"}
+    source_labels = {"mapillary": "real (Mapillary)", "synthetic": "synthetic"}
+
+    cat_order = (
+        eval_frame.groupby("scene_category")["err_vlm"]
+        .max()
+        .sort_values(ascending=False)
+        .index
+        .tolist()
+    )
+
+    fig, ax = plt.subplots(figsize=(max(8, len(cat_order) * 1.8), 5))
+    category_centers = []
+    category_names = []
+    current_x = 0.0
+    bar_width = 0.55
+    category_gap = 0.8
+
+    for cat in cat_order:
+        group = (
+            eval_frame[eval_frame["scene_category"] == cat]
+            .sort_values("err_vlm", ascending=False)
+        )
+        n = len(group)
+        if n == 0:
+            continue
+        offsets = [current_x + i * bar_width for i in range(n)]
+        colors = [source_colors.get(src, "C2") for src in group["source"]]
+        ax.bar(offsets, group["err_vlm"], width=bar_width * 0.9, color=colors)
+        category_centers.append(current_x + (n - 1) * bar_width / 2)
+        category_names.append(cat)
+        current_x += n * bar_width + category_gap
+
+    ax.axhline(
+        MISMATCH_THRESHOLD,
+        color="red",
+        linestyle="--",
+        alpha=0.75,
+        label=f"threshold={MISMATCH_THRESHOLD}",
+    )
+    ax.set_xticks(category_centers)
+    ax.set_xticklabels(category_names, rotation=45, ha="right")
+    ax.set_ylabel("|VLM - human|")
+    ax.set_xlabel("scene_category")
+    ax.set_title(f"Tier C: All images by scene_category (n={len(eval_frame)})")
+
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+
+    legend_handles = [
+        Patch(facecolor=source_colors[src], label=source_labels[src])
+        for src in source_colors
+        if src in set(eval_frame["source"])
+    ]
+    legend_handles.append(
+        Line2D(
+            [0],
+            [0],
+            color="red",
+            linestyle="--",
+            label=f"threshold={MISMATCH_THRESHOLD}",
+        )
+    )
+    ax.legend(handles=legend_handles, loc="upper right")
+    plt.tight_layout()
+    plt.show()
+
 if not mismatches.empty:
     display(summarize_mismatches_by_scene_category(mismatches))
-    if len(mismatches) >= 3:
-        (
-            mismatches.groupby("scene_category")["err_vlm"]
-            .mean()
-            .sort_values(ascending=False)
-            .plot(kind="bar", title="Mean VLM error by scene_category")
-        )
-        plt.ylabel("mean |VLM - human|")
-        plt.tight_layout()
-        plt.show()
 else:
     print("No mismatches at current threshold — consider lowering MISMATCH_THRESHOLD.")
 ```
@@ -1271,13 +1329,20 @@ def show_mismatch_card(row):
     display(HTML("<hr>"))
 
 
-if mismatches.empty:
-    print("No mismatch gallery to show.")
+if eval_frame.empty:
+    print("No images to show.")
 else:
-    for scene_category, group in mismatches.groupby("scene_category"):
-        display(HTML(f"<h3>{scene_category}</h3>"))
-        for _, row in group.iterrows():
-            show_mismatch_card(row)
+    ranked = eval_frame.sort_values("err_vlm", ascending=False).reset_index(drop=True)
+    display(
+        HTML(
+            f"<h3>Image gallery (sorted by deviation, "
+            f"threshold={MISMATCH_THRESHOLD})</h3>"
+        )
+    )
+    for rank, (_, row) in enumerate(ranked.iterrows(), start=1):
+        flag = " · mismatch" if row["err_vlm"] > MISMATCH_THRESHOLD else ""
+        display(HTML(f"<p><b>#{rank}</b> · err={row['err_vlm']:.2f}{flag}</p>"))
+        show_mismatch_card(row)
 ```
 
 **Cell 10 (markdown) — Takeaways**
@@ -1299,7 +1364,14 @@ else:
 - [ ] **Step 2: Execute notebook and save outputs**
 
 ```bash
-uv run jupyter execute eval/evaluation.ipynb --inplace
+uv run python - <<'PY'
+import nbformat
+from nbclient import NotebookClient
+
+nb = nbformat.read("eval/evaluation.ipynb", as_version=4)
+NotebookClient(nb, timeout=600, kernel_name="python3").execute()
+nbformat.write(nb, "eval/evaluation.ipynb")
+PY
 ```
 
 Open the notebook, fill in the Takeaways cell with real numbers, re-run if needed, and save with all cell outputs visible.
@@ -1374,7 +1446,7 @@ EOF
 | Shared parallel scoring via `run_scoring_batch` | `src/score.py`, Task 2, Task 4 |
 | Tier A: Spearman + MAE vs human (real only) | Task 1, Task 6 (cells 3–4) |
 | Tier B: run stability (10×3) | Task 1, Task 4, Task 6 (cells 5–6) |
-| Tier C: mismatch + `scene_category` + hour/sidewalk_pct + images | Task 1, Task 6 (cells 7–9) |
+| Tier C: per-image deviation bar chart (all images, coloured by `source`) + image gallery sorted by deviation | Task 1, Task 6 (cells 7–9) |
 | `eval/data/human_labels.csv` with `scene_category` | Task 3 |
 | Images from `sample/` + `synthetic/`, not `exploration/` | Task 2, Task 4, Task 6 |
 | Composite baseline dropped | Task 1 (no composite functions) |
@@ -1393,13 +1465,20 @@ EOF
 uv run pytest tests/test_eval_metrics.py tests/test_score_eval.py tests/test_score.py -v
 uv run python -m eval.score_eval                    # requires GOOGLE_API_KEY + labeled human_labels.csv
 uv run python eval/collect_run_variance.py          # Tier B; requires API key; parallel batch
-uv run jupyter execute eval/evaluation.ipynb --inplace
+uv run python - <<'PY'
+import nbformat
+from nbclient import NotebookClient
+
+nb = nbformat.read("eval/evaluation.ipynb", as_version=4)
+NotebookClient(nb, timeout=600, kernel_name="python3").execute()
+nbformat.write(nb, "eval/evaluation.ipynb")
+PY
 ```
 
 Manual checks:
 1. `eval/evaluation.ipynb` opens with tables and images visible (no re-run needed)
 2. Tier A uses `eval/data/scores.csv` and filters to `source == mapillary`
 3. Tier B shows stability summary when `run_variance.csv` is present
-4. Tier C gallery groups by `scene_category` and shows hour + sidewalk_pct
+4. Tier C bar chart shows all images by `scene_category` (coloured by `source`, threshold line); gallery shows all images sorted by deviation with hour + sidewalk_pct
 5. `data/scores.csv` unchanged by eval scripts
 6. README numbers match notebook Tier A metrics
