@@ -1,8 +1,10 @@
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
+from src.config import get_google_api_key
 from src.main import app
 from src.models import ScoreSummary
 
@@ -54,3 +56,23 @@ def test_score_endpoint_missing_api_key(client, monkeypatch):
     with patch("src.main.run_scoring", side_effect=MissingApiKeyError("missing")):
         response = client.post("/api/score")
     assert response.status_code == 503
+
+
+@pytest.mark.integration
+def test_score_endpoint_live(integration_client, integration_data_dir):
+    if not get_google_api_key():
+        pytest.skip("GOOGLE_API_KEY must be set for live tests")
+
+    response = integration_client.post("/api/score")
+    assert response.status_code == 200
+
+    body = response.json()
+    assert body["scored"] == 1
+    assert body["skipped"] == 0
+    assert body["errors"] == []
+
+    scores_path = integration_data_dir / "data" / "scores.csv"
+    scores = pd.read_csv(scores_path)
+    assert len(scores) == 1
+    assert scores.iloc[0]["uuid"] == "aaa-111"
+    assert 0.0 <= scores.iloc[0]["pedestrian_shade_score"] <= 1.0
