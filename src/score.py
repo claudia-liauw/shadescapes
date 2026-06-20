@@ -113,9 +113,9 @@ def _write_scores(df: pd.DataFrame) -> None:
 
 
 def run_scoring(force: bool = False) -> ScoreSummary:
-    api_key = config.get_gemini_api_key()
+    api_key = config.get_google_api_key()
     if not api_key:
-        raise MissingApiKeyError("GEMINI_API_KEY is not configured")
+        raise MissingApiKeyError("GOOGLE_API_KEY is not configured")
 
     images = discover_images()
     if not images:

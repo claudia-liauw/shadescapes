@@ -50,7 +50,7 @@ def test_score_endpoint_handles_no_images(mock_run_scoring, client):
 def test_score_endpoint_missing_api_key(client, monkeypatch):
     from src.models import MissingApiKeyError
 
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     with patch("src.main.run_scoring", side_effect=MissingApiKeyError("missing")):
         response = client.post("/api/score")
     assert response.status_code == 503

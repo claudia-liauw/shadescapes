@@ -46,6 +46,7 @@ Add to `[project].dependencies`:
 "uvicorn[standard]>=0.34.0",
 "jinja2>=3.1.0",
 "python-multipart>=0.0.20",
+"python-dotenv>=1.0.0",
 ```
 
 Add dev dependency group:
@@ -98,7 +99,7 @@ from src.config import (
     METADATA_CSV,
     PROJECT_ROOT,
     SCORES_CSV,
-    get_gemini_api_key,
+    get_google_api_key,
 )
 
 
@@ -109,14 +110,14 @@ def test_paths_are_under_project_root():
     assert SCORES_CSV == PROJECT_ROOT / "data" / "scores.csv"
 
 
-def test_get_gemini_api_key_missing(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    assert get_gemini_api_key() is None
+def test_get_google_api_key_missing(monkeypatch):
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    assert get_google_api_key() is None
 
 
-def test_get_gemini_api_key_present(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    assert get_gemini_api_key() == "test-key"
+def test_get_google_api_key_present(monkeypatch):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    assert get_google_api_key() == "test-key"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -130,7 +131,10 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'src.config'`
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env")
 DATA_DIR = PROJECT_ROOT / "data"
 METADATA_CSV = DATA_DIR / "filtered_streetscapes.csv"
 IMAGES_DIR = DATA_DIR / "images" / "exploration"
@@ -139,8 +143,8 @@ SCORES_CSV = DATA_DIR / "scores.csv"
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 
-def get_gemini_api_key() -> str | None:
-    return os.getenv("GEMINI_API_KEY")
+def get_google_api_key() -> str | None:
+    return os.getenv("GOOGLE_API_KEY")
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -243,7 +247,7 @@ class NoImagesError(Exception):
 
 
 class MissingApiKeyError(Exception):
-    """Raised when GEMINI_API_KEY is not set."""
+    """Raised when GOOGLE_API_KEY is not set."""
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -630,7 +634,7 @@ def test_load_existing_scores_empty(data_dir):
 
 @patch("src.score._call_gemini")
 def test_score_image_success(mock_call, data_dir, monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     mock_call.return_value = json.dumps(
         {
             "pedestrian_shade_score": 0.75,
@@ -648,7 +652,7 @@ def test_score_image_success(mock_call, data_dir, monkeypatch):
 
 @patch("src.score.score_image")
 def test_run_scoring_skips_existing(mock_score_image, data_dir, monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     scores_path = data_dir / "data" / "scores.csv"
     pd.DataFrame(
         [
@@ -681,13 +685,13 @@ def test_run_scoring_no_images(tmp_path, monkeypatch):
     exploration = tmp_path / "data" / "images" / "exploration"
     exploration.mkdir(parents=True)
     monkeypatch.setattr("src.score.IMAGES_DIR", exploration)
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     with pytest.raises(NoImagesError):
         run_scoring()
 
 
 def test_run_scoring_missing_api_key(data_dir, monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     with pytest.raises(MissingApiKeyError):
         run_scoring()
 ```
@@ -802,9 +806,9 @@ def _write_scores(df: pd.DataFrame) -> None:
 
 
 def run_scoring(force: bool = False) -> ScoreSummary:
-    api_key = config.get_gemini_api_key()
+    api_key = config.get_google_api_key()
     if not api_key:
-        raise MissingApiKeyError("GEMINI_API_KEY is not configured")
+        raise MissingApiKeyError("GOOGLE_API_KEY is not configured")
 
     images = discover_images()
     if not images:
@@ -931,7 +935,7 @@ def test_score_endpoint_handles_no_images(mock_run_scoring, client):
 def test_score_endpoint_missing_api_key(client, monkeypatch):
     from src.models import MissingApiKeyError
 
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     with patch("src.main.run_scoring", side_effect=MissingApiKeyError("missing")):
         response = client.post("/api/score")
     assert response.status_code == 503
@@ -1197,13 +1201,13 @@ Expected: 9 grey markers on map centred on corridor (~1.30°N, 103.80°E)
 
 Run in another terminal:
 ```bash
-env -u GEMINI_API_KEY curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/api/score
+env -u GOOGLE_API_KEY curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/api/score
 ```
 Expected: `503`
 
 - [ ] **Step 4: Run live scoring**
 
-Ensure `.env` or shell has `GEMINI_API_KEY` set. Click **Run Shade Scoring** in browser.
+Ensure `.env` or shell has `GOOGLE_API_KEY` set. Click **Run Shade Scoring** in browser.
 Expected: `data/scores.csv` created; page reloads; markers turn green/yellow/red
 
 - [ ] **Step 5: Verify popup content**
@@ -1248,6 +1252,7 @@ Only run this step if fixes were required in Step 1–6.
 ## Notes for implementer
 
 - `data/` is gitignored; local images must exist at `data/images/exploration/`.
+- Set `GOOGLE_API_KEY` in `.env` (loaded via `python-dotenv` at startup) or in the shell. The `google-genai` SDK reads this env var automatically.
 - If `gemini-2.0-flash` is unavailable, set `GEMINI_MODEL` env var to a working model id.
 - Folium legend uses `position:fixed`; acceptable for demo.
 - Do not commit `.env` or `data/scores.csv` unless explicitly requested.

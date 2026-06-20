@@ -62,7 +62,7 @@ def test_load_existing_scores_empty(data_dir):
 
 @patch("src.score._call_gemini")
 def test_score_image_success(mock_call, data_dir, monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     mock_call.return_value = json.dumps(
         {
             "pedestrian_shade_score": 0.75,
@@ -80,7 +80,7 @@ def test_score_image_success(mock_call, data_dir, monkeypatch):
 
 @patch("src.score.score_image")
 def test_run_scoring_skips_existing(mock_score_image, data_dir, monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     scores_path = data_dir / "data" / "scores.csv"
     pd.DataFrame(
         [
@@ -114,12 +114,12 @@ def test_run_scoring_no_images(tmp_path, monkeypatch):
     exploration = tmp_path / "data" / "images" / "exploration"
     exploration.mkdir(parents=True)
     monkeypatch.setattr("src.score.IMAGES_DIR", exploration)
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     with pytest.raises(NoImagesError):
         run_scoring()
 
 
 def test_run_scoring_missing_api_key(data_dir, monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     with pytest.raises(MissingApiKeyError):
         run_scoring()
