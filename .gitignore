@@ -9,8 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
-data/
-!eval/data/
+data/images/exploration/
+data/streetscapes.parquet
+data/scores.csv
 .env
 cache/
 expt.ipynb
