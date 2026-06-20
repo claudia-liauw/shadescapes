@@ -138,6 +138,8 @@ def run_scoring(force: bool = False) -> ScoreSummary:
 
     scored_count = 0
     skipped_count = 0
+    skip_reasons: dict[str, int] = {"already_scored": 0, "missing_metadata": 0}
+    skips: list[str] = []
     errors: list[str] = []
     rows: list[dict] = existing.to_dict("records") if not existing.empty else []
     rows_by_uuid = {str(row["uuid"]): row for row in rows}
@@ -149,11 +151,14 @@ def run_scoring(force: bool = False) -> ScoreSummary:
         uuid = image_path.stem
         if uuid not in metadata_rows:
             skipped_count += 1
-            errors.append(f"{uuid}: no metadata row in filtered_streetscapes.csv")
+            skip_reasons["missing_metadata"] += 1
+            skips.append(f"{uuid}: no metadata row in filtered_streetscapes.csv")
             continue
 
         if not force and uuid in existing_uuids:
             skipped_count += 1
+            skip_reasons["already_scored"] += 1
+            skips.append(f"{uuid}: already scored")
             continue
 
         try:
@@ -171,4 +176,10 @@ def run_scoring(force: bool = False) -> ScoreSummary:
             errors.append(f"{uuid}: {exc}")
 
     _write_scores(pd.DataFrame(rows_by_uuid.values()))
-    return ScoreSummary(scored=scored_count, skipped=skipped_count, errors=errors)
+    return ScoreSummary(
+        scored=scored_count,
+        skipped=skipped_count,
+        skip_reasons={key: count for key, count in skip_reasons.items() if count},
+        skips=skips,
+        errors=errors,
+    )

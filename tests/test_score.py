@@ -167,7 +167,29 @@ def test_run_scoring_skips_existing(mock_score_image, data_dir, monkeypatch):
     summary = run_scoring(force=False)
     assert summary.scored == 0
     assert summary.skipped == 2
+    assert summary.skip_reasons == {"already_scored": 2}
+    assert summary.skips == ["aaa-111: already scored", "bbb-222: already scored"]
     mock_score_image.assert_not_called()
+
+
+@patch("src.score.score_image")
+def test_run_scoring_skips_missing_metadata_row(mock_score_image, data_dir, monkeypatch):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    metadata_path = data_dir / "data" / "filtered_streetscapes.csv"
+    pd.read_csv(metadata_path).iloc[:1].to_csv(metadata_path, index=False)
+    mock_score_image.return_value = ShadeScore(
+        pedestrian_shade_score=0.5,
+        shade_sources=["street_trees"],
+        confidence="medium",
+        reasoning="Partial cover.",
+    )
+
+    summary = run_scoring(force=False)
+    assert summary.scored == 1
+    assert summary.skipped == 1
+    assert summary.skip_reasons == {"missing_metadata": 1}
+    assert summary.skips == ["bbb-222: no metadata row in filtered_streetscapes.csv"]
+    mock_score_image.assert_called_once()
 
 
 def test_run_scoring_missing_metadata(data_dir, monkeypatch):

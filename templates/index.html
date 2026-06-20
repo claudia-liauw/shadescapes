@@ -32,6 +32,13 @@
   <script>
     const button = document.getElementById("score-btn");
     const status = document.getElementById("status");
+    const scoreMessage = sessionStorage.getItem("scoreMessage");
+
+    if (scoreMessage) {
+      status.textContent = scoreMessage;
+      status.className = "status status-success";
+      sessionStorage.removeItem("scoreMessage");
+    }
 
     button.addEventListener("click", async () => {
       button.disabled = true;
@@ -45,8 +52,7 @@
         if (!response.ok) {
           throw new Error(data.detail || "Scoring failed");
         }
-        status.textContent = `Scored ${data.scored}, skipped ${data.skipped}. Reloading map…`;
-        status.className = "status status-success";
+        sessionStorage.setItem("scoreMessage", data.message);
         window.location.reload();
       } catch (error) {
         status.textContent = error.message;

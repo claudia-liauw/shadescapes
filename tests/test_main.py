@@ -64,6 +64,7 @@ def test_score_endpoint_success(mock_run_scoring, client):
     response = client.post("/api/score")
     assert response.status_code == 200
     assert response.json()["scored"] == 2
+    assert response.json()["message"] == "Scored 2 images, skipped 1 image."
 
 
 @patch("src.main.run_scoring", side_effect=Exception("NoImagesError"))
