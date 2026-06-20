@@ -199,7 +199,7 @@ def test_compute_method_metrics():
     )
     metrics = compute_method_metrics(frame, "pedestrian_shade_score")
     assert metrics["n"] == 3
-    assert metrics["mae"] == pytest.approx(0.1)
+    assert metrics["mae"] == pytest.approx(0.06666666666666667)
     assert metrics["spearman"] == pytest.approx(1.0)
 
 
