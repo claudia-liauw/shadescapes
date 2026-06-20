@@ -29,3 +29,10 @@ d3ebafab-20b9-4bad-86d0-97eb808f15ed,,ambiguous_path,no sidewalk
 dd1baffd-c522-46e6-b669-0323a02945ac,4,tree_canopy,dappled shade
 dee05105-3feb-4377-855c-46ee7a41b208,4,tree_canopy,dappled shade
 f8c1badf-9058-4ac7-838c-fc5d724c98bb,5,tree_canopy,
+syn-building-01,4,building_shadow,manual nano banana edit; intended shade 4-5
+syn-building-02,3,building_shadow,manual nano banana edit; intended shade 4
+syn-linkway-01,3,covered_walkway,manual nano banana edit; intended shade 5
+syn-mixed-building-01,3,mixed_sources,manual nano banana edit; intended shade 3
+syn-highpath-01,1,open_exposure,manual nano banana edit; intended shade 1
+syn-shelter-01,2,covered_walkway,manual nano banana edit; intended shade 2-3
+syn-distant-01,1,open_exposure,manual nano banana edit; distant canopy trap

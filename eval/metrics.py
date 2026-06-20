@@ -39,12 +39,11 @@ def load_eval_metadata() -> pd.DataFrame:
 
 
 def resolve_image_path(uuid: str) -> Path | None:
-    sample_path = SAMPLE_IMAGES_DIR / f"{uuid}.jpeg"
-    if sample_path.exists():
-        return sample_path
-    synthetic_path = SYNTHETIC_IMAGES_DIR / f"{uuid}.jpeg"
-    if synthetic_path.exists():
-        return synthetic_path
+    for base in (SAMPLE_IMAGES_DIR, SYNTHETIC_IMAGES_DIR):
+        for ext in (".jpeg", ".jpg", ".png"):
+            candidate = base / f"{uuid}{ext}"
+            if candidate.exists():
+                return candidate
     return None
 
 
