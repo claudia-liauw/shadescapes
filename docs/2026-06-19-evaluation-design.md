@@ -56,7 +56,8 @@ Metrics in `results.md`; no inline images.
 
 ```text
 human_labels.csv ──┐
-scores.csv ────────┼──► evaluation.ipynb ──► saved outputs (tables, charts, image gallery)
+scores.csv ────────┤
+run_variance.csv ──┼──► evaluation.ipynb ──► saved outputs (tables, charts, image gallery)
 filtered_streetscapes.csv ──┘
 data/images/exploration/{uuid}.jpeg ──► Tier C inline display
 ```
@@ -86,6 +87,30 @@ Optional `eval/run_eval.py` may hold pure functions (join, metrics, mismatch fla
 - **MAE** (secondary) — mean absolute error after normalization
 
 **Implementation:** `pandas.Series.corr(method="spearman")` for ρ; `(pred - human_norm).abs().mean()` for MAE.
+
+**Scores used:** Single-run values from `data/scores.csv` (the production scoring path). Run stability is assessed separately in Tier A½.
+
+### Tier A½ — Run stability (VLM reliability)
+
+Measures whether the VLM returns **consistent** scores for the same image + prompt across repeated API calls. This is distinct from Tier A accuracy (correctness vs human).
+
+**Protocol:**
+- Select **10 images** from the eval set (`human_labels.csv`), spanning varied shade levels and `place` values
+- Score each image **3 times** with the same prompt/model as production (`src.score.score_image`)
+- Store raw runs in `eval/run_variance.csv`
+
+**Metrics (descriptive, no significance tests at N=10):**
+
+| Metric | Definition |
+|--------|------------|
+| **Median std** | Median per-image standard deviation across 3 runs |
+| **Max range** | Worst-case `max − min` across runs for any image |
+| **% high-variance** | Share of images where range > `0.15` |
+| **Test–retest Spearman** | Rank correlation between run 1 and run 2 scores across the 10 images |
+
+**Framing:** Composite baseline has zero run variance by construction. Stability is a VLM-only deployment concern — a cool route should not flip on re-scoring.
+
+**Scope limit:** 10 images × 3 runs = 30 API calls. Do not expand to full 30-image × 5-run grid.
 
 ### Tier B — Composite baseline comparison
 
@@ -140,6 +165,15 @@ Target ~8–12 flagged images from 30 labels. Adjust threshold if needed to hit 
 2. Scores card: human, VLM, composite, per-method errors
 3. Metadata line: place, GVI, SVI, heading
 4. VLM reasoning (and optional author notes from `human_labels.csv`)
+5. **Run stability** (if image is in Tier A½ sample): `run_std`, `run_range` from `run_variance.csv`
+
+**Interpreting mismatches with variance:**
+
+| Pattern | Interpretation |
+|---------|----------------|
+| High error vs human + low run variance | Likely real model/prompt failure |
+| High error vs human + high run variance | Ambiguous image or unreliable score — soften the claim |
+| Borderline mismatch + high run variance | Do not cite as a Tier C case study |
 
 Group gallery sections by `miss_type` or `place` with markdown headers.
 
@@ -171,6 +205,26 @@ Hand-curated ground truth. Pre-fill `uuid` from images that have VLM scores; lea
 
 ~30 rows. Select images that span varied shade conditions and `place` values across the corridor.
 
+### `eval/stability_sample.csv`
+
+10 uuids drawn from `human_labels.csv` for Tier A½. Written once; subset of the eval set.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `uuid` | string | Image to re-score |
+
+### `eval/run_variance.csv`
+
+Raw multi-run VLM outputs for Tier A½.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `uuid` | string | Image id |
+| `run_id` | int (1–3) | Run index |
+| `pedestrian_shade_score` | float | Score for that run |
+| `confidence` | string | VLM confidence for that run |
+| `scored_at` | string | ISO timestamp |
+
 ### Inputs (existing)
 
 | File | Key columns |
@@ -193,10 +247,11 @@ Committed **with saved cell outputs** (images, tables, charts visible offline).
 |---------|---------|
 | **1. Intro** | Methodology summary, eval claim, limitations |
 | **2. Setup** | Imports, load CSVs, join, compute `composite_score` and `human_norm` |
-| **3. Tier A** | VLM ρ and MAE; optional scatter (human vs VLM with 45° line) |
-| **4. Tier B** | Composite ρ and MAE; side-by-side comparison table |
-| **5. Tier C** | Mismatch flags; summary by `place`; inline image gallery |
-| **6. Takeaways** | Headline result, 1–2 place-level patterns, top failure modes |
+| **3. Tier A½** | Run stability summary from `run_variance.csv`; per-image std/range table |
+| **4. Tier A** | VLM ρ and MAE; optional scatter (human vs VLM with 45° line) |
+| **5. Tier B** | Composite ρ and MAE; side-by-side comparison table |
+| **6. Tier C** | Mismatch flags; summary by `place`; inline image gallery (incl. run_std where available) |
+| **7. Takeaways** | Headline result, stability note, 1–2 place-level patterns, top failure modes |
 
 **Run instructions** (for README):
 
@@ -215,9 +270,10 @@ Eval section (~150–200 words):
 2. Sample size and corridor context
 3. Headline numbers (VLM vs composite ρ and MAE)
 4. One Tier C insight with link to `eval/evaluation.ipynb`
-5. Limitations: single rater, N≈30, static snapshots, no solar geometry
+5. Limitations: single rater, N≈30, static snapshots, no solar geometry, single-run scores in Tier A (stability checked on 10-image subset)
+6. One-line stability result: median run-to-run std from Tier A½
 
-PROCESS.md: labeling experience, surprising mismatches from Tier C gallery.
+PROCESS.md: labeling experience, surprising mismatches from Tier C gallery, whether high-variance images aligned with ambiguous cases.
 
 ---
 
@@ -236,13 +292,16 @@ No new dependencies required. Spearman via `pandas.Series.corr(method="spearman"
 | Labeled uuid missing from scores | Exclude from eval; print warning listing uuids |
 | Labeled uuid missing from metadata | Exclude; print warning |
 | Image file missing for mismatch | Show placeholder text in gallery cell; do not crash notebook |
+| `run_variance.csv` missing or incomplete | Tier A½ section shows warning; Tier A/B/C still run |
 | Fewer than 10 scored images | Notebook runs but README notes eval is preliminary |
 
 ---
 
 ## Out of Scope
 
-- Inter-rater reliability (no second rater)
+- Inter-rater reliability (no second human rater)
+- Full-grid run variance (30 images × 5 runs)
+- Formal significance tests on run variance (N too small)
 - Automated labeling or LLM-as-judge
 - CI execution of the notebook
 - Eval of segment aggregation or cool-route routing
@@ -252,10 +311,11 @@ No new dependencies required. Spearman via `pandas.Series.corr(method="spearman"
 ## Success Criteria
 
 1. Notebook runs end-to-end on committed data with saved outputs
-2. Tier A and B produce a comparison table (VLM vs composite)
-3. Tier C gallery shows ≥5 mismatch cases with images and `place` metadata
-4. README links to notebook and states methodology honestly
-5. Results may show VLM losing on some strata — that is acceptable and expected
+2. Tier A½ reports median run std and % high-variance images (10 × 3 runs)
+3. Tier A and B produce a comparison table (VLM vs composite)
+4. Tier C gallery shows ≥5 mismatch cases with images and `place` metadata
+5. README links to notebook and states methodology honestly
+6. Results may show VLM losing on some strata — that is acceptable and expected
 
 ---
 
@@ -264,7 +324,8 @@ No new dependencies required. Spearman via `pandas.Series.corr(method="spearman"
 | Task | Estimate |
 |------|----------|
 | Hand-label 30 images | 2–3 hrs |
-| Build notebook (Tiers A–B) | 1 hr |
+| Collect run variance (10 img × 3 runs) | ~45 min |
+| Build notebook (Tiers A½, A–B) | 1–1.5 hrs |
 | Tier C gallery + place summary | 1–1.5 hrs |
 | Execute, save outputs, README link | 30 min |
-| **Total** | **~5–6 hrs** |
+| **Total** | **~6–7 hrs** |
