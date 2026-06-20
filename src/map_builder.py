@@ -87,33 +87,35 @@ def _format_sources(raw: str | float | None) -> str:
     return text
 
 
+def _format_optional(value, formatter=None) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "—"
+    try:
+        formatted = formatter(value) if formatter else value
+        return escape(str(formatted))
+    except (ValueError, TypeError):
+        return escape(str(value))
+
+
 def _popup_html(row: pd.Series) -> str:
     uuid = escape(str(row["uuid"]))
     score = row.get("pedestrian_shade_score")
     score_text = "Not scored yet" if score is None or pd.isna(score) else f"{float(score):.2f}"
     sources = escape(_format_sources(row.get("shade_sources")))
     confidence = row.get("confidence")
-    confidence_text = (
-        "—" if confidence is None or (isinstance(confidence, float) and pd.isna(confidence)) else escape(str(confidence))
-    )
-    reasoning = row.get("reasoning")
-    reasoning_text = (
-        "—" if reasoning is None or (isinstance(reasoning, float) and pd.isna(reasoning)) else escape(str(reasoning))
-    )
-    place = escape(str(row.get("place", "—")))
-    gvi = row.get("green_view_index")
-    svi = row.get("sky_view_index")
-    gvi_text = "—" if gvi is None or pd.isna(gvi) else f"{float(gvi):.2f}"
-    svi_text = "—" if svi is None or pd.isna(svi) else f"{float(svi):.2f}"
+    confidence_text = _format_optional(confidence)
+    reasoning_text = _format_optional(row.get("reasoning"))
+    hour_text = _format_optional(row.get("hour"), lambda v: int(float(v)))
+    sidewalk_text = _format_optional(row.get("sidewalk_pct"), lambda v: f"{float(v) * 100:.0f}%")
 
     return f"""
     <div style="min-width:220px">
-      <img src="/images/{uuid}.jpeg" alt="Street view" style="width:100%;max-width:240px;border-radius:4px;margin-bottom:8px;" />
+      <img src="/images/{uuid}.jpeg" alt="Street view" style="width:100%;max-width:240px;border-radius:4px;margin-bottom:8px;" /><br/>
       <strong>Shade score:</strong> {score_text}<br/>
       <strong>Sources:</strong> {sources}<br/>
       <strong>Confidence:</strong> {confidence_text}<br/>
-      <strong>Place:</strong> {place}<br/>
-      <strong>GVI:</strong> {gvi_text} &nbsp; <strong>SVI:</strong> {svi_text}<br/>
+      <strong>Hour:</strong> {hour_text}<br/>
+      <strong>Sidewalk:</strong> {sidewalk_text}<br/>
       <p style="margin:8px 0 0">{reasoning_text}</p>
     </div>
     """
