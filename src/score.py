@@ -28,6 +28,8 @@ SCORE_COLUMNS = [
     "reasoning",
     "scored_at",
 ]
+RATE_LIMIT_MAX_REQUESTS_PER_MINUTE = 15
+RATE_LIMIT_PERIOD_SECONDS = 60.0
 
 
 def discover_images() -> list[str]:
@@ -167,21 +169,48 @@ def run_scoring_batch(
 
     rows: list[dict] = []
     errors: list[str] = list(pre_errors or [])
+    total_to_score = len(to_score)
 
     if to_score:
-        with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
-            futures = [
-                executor.submit(_score_task, key, image_path, metadata_row)
-                for key, image_path, metadata_row in to_score
+        batch_size = RATE_LIMIT_MAX_REQUESTS_PER_MINUTE
+        total_batches = (total_to_score + batch_size - 1) // batch_size
+        completed_requests = 0
+        for batch_index in range(total_batches):
+            batch = to_score[
+                batch_index * batch_size : (batch_index + 1) * batch_size
             ]
-            for future in as_completed(futures):
-                key, result, error = future.result()
-                if error is not None:
-                    errors.append(_format_batch_error(key, error))
-                    continue
-                rows.append(build_row(key, result))
-                if on_scored is not None:
-                    on_scored(key, result)
+            batch_start = time.perf_counter()
+            print(
+                f"Batch {batch_index + 1}/{total_batches}: scoring {len(batch)} requests "
+                f"({completed_requests}/{total_to_score} processed so far)"
+            )
+            with ThreadPoolExecutor(max_workers=min(BATCH_SIZE, len(batch))) as executor:
+                futures = [
+                    executor.submit(_score_task, key, image_path, metadata_row)
+                    for key, image_path, metadata_row in batch
+                ]
+                for future in as_completed(futures):
+                    key, result, error = future.result()
+                    if error is not None:
+                        errors.append(_format_batch_error(key, error))
+                    else:
+                        rows.append(build_row(key, result))
+                        if on_scored is not None:
+                            on_scored(key, result)
+                    completed_requests += 1
+            print(
+                f"Batch {batch_index + 1} complete "
+                f"({completed_requests}/{total_to_score} total processed)"
+            )
+            if batch_index < total_batches - 1:
+                elapsed = time.perf_counter() - batch_start
+                sleep_time = RATE_LIMIT_PERIOD_SECONDS - elapsed
+                if sleep_time > 0:
+                    print(
+                        f"Rate limit: waiting {sleep_time:.1f}s "
+                        f"before next batch ({RATE_LIMIT_MAX_REQUESTS_PER_MINUTE}/min max)"
+                    )
+                    time.sleep(sleep_time)
 
     elapsed_seconds = round(time.perf_counter() - started, 1)
     summary = ScoreSummary(
