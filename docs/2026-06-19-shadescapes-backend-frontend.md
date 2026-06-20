@@ -567,7 +567,7 @@ Create `tests/test_score.py`:
 
 ```python
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -659,7 +659,15 @@ def test_run_scoring_skips_existing(mock_score_image, data_dir, monkeypatch):
                 "confidence": "medium",
                 "reasoning": "Already scored.",
                 "scored_at": "2026-06-19T12:00:00",
-            }
+            },
+            {
+                "uuid": "bbb-222",
+                "pedestrian_shade_score": 0.6,
+                "shade_sources": "[]",
+                "confidence": "medium",
+                "reasoning": "Already scored.",
+                "scored_at": "2026-06-19T13:00:00",
+            },
         ]
     ).to_csv(scores_path, index=False)
 
@@ -701,14 +709,18 @@ import pandas as pd
 from google import genai
 from PIL import Image
 
-from src.config import IMAGES_DIR, GEMINI_MODEL, METADATA_CSV, SCORES_CSV, get_gemini_api_key
+from src import config
 from src.models import MissingApiKeyError, NoImagesError, ScoreSummary, ShadeScore
 
+IMAGES_DIR = config.IMAGES_DIR
+METADATA_CSV = config.METADATA_CSV
+SCORES_CSV = config.SCORES_CSV
 
-def discover_images() -> list[Path]:
+
+def discover_images() -> list[str]:
     if not IMAGES_DIR.exists():
         return []
-    return sorted(IMAGES_DIR.glob("*.jpeg"))
+    return [path.name for path in sorted(IMAGES_DIR.glob("*.jpeg"))]
 
 
 def build_prompt(heading: float | None = None) -> str:
@@ -750,7 +762,7 @@ def _call_gemini(image_path: Path, prompt: str) -> str:
     client = genai.Client()
     image = Image.open(image_path)
     response = client.models.generate_content(
-        model=GEMINI_MODEL,
+        model=config.GEMINI_MODEL,
         contents=[image, prompt],
     )
     return response.text or ""
@@ -790,7 +802,7 @@ def _write_scores(df: pd.DataFrame) -> None:
 
 
 def run_scoring(force: bool = False) -> ScoreSummary:
-    api_key = get_gemini_api_key()
+    api_key = config.get_gemini_api_key()
     if not api_key:
         raise MissingApiKeyError("GEMINI_API_KEY is not configured")
 
@@ -809,7 +821,9 @@ def run_scoring(force: bool = False) -> ScoreSummary:
     rows: list[dict] = existing.to_dict("records") if not existing.empty else []
     rows_by_uuid = {str(row["uuid"]): row for row in rows}
 
-    for image_path in images:
+    image_paths = [IMAGES_DIR / name for name in images]
+
+    for image_path in image_paths:
         uuid = image_path.stem
         if uuid not in metadata_by_uuid.index:
             skipped_count += 1
@@ -837,6 +851,8 @@ def run_scoring(force: bool = False) -> ScoreSummary:
     _write_scores(pd.DataFrame(rows_by_uuid.values()))
     return ScoreSummary(scored=scored_count, skipped=skipped_count, errors=errors)
 ```
+
+> **Note:** The score module now exposes `IMAGES_DIR`, `METADATA_CSV`, and `SCORES_CSV` as symbols backed by `src.config`, and `discover_images()` returns bare filenames so fixtures can monkeypatch these attributes. This is why the tests manually patch `src.score.*` and the warning about stale constants from Task 4 applies here as well.
 
 - [ ] **Step 4: Run tests to verify they pass**
 

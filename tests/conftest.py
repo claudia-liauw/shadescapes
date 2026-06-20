@@ -49,4 +49,7 @@ def data_dir(tmp_path, sample_metadata_rows, monkeypatch):
     monkeypatch.setattr("src.config.METADATA_CSV", metadata_path)
     monkeypatch.setattr("src.config.IMAGES_DIR", exploration)
     monkeypatch.setattr("src.config.SCORES_CSV", scores_path)
+    monkeypatch.setattr("src.score.IMAGES_DIR", exploration)
+    monkeypatch.setattr("src.score.METADATA_CSV", metadata_path)
+    monkeypatch.setattr("src.score.SCORES_CSV", scores_path)
     return tmp_path
