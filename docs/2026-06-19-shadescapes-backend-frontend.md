@@ -952,14 +952,14 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from src.config import IMAGES_DIR, PROJECT_ROOT
+from src import config
 from src.map_builder import build_map
 from src.models import MissingApiKeyError, NoImagesError
 from src.score import run_scoring
 
 app = FastAPI(title="ShadeScapes")
-templates = Jinja2Templates(directory=str(PROJECT_ROOT / "templates"))
-app.mount("/static", StaticFiles(directory=str(PROJECT_ROOT / "static")), name="static")
+templates = Jinja2Templates(directory=str(config.PROJECT_ROOT / "templates"))
+app.mount("/static", StaticFiles(directory=str(config.PROJECT_ROOT / "static")), name="static")
 
 
 @app.get("/health")
@@ -993,7 +993,7 @@ def score_images(force: bool = Query(default=False)):
 def get_image(filename: str):
     if not filename.endswith(".jpeg"):
         raise HTTPException(status_code=404, detail="Image not found")
-    image_path = IMAGES_DIR / filename
+    image_path = config.IMAGES_DIR / filename
     if not image_path.exists():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(image_path, media_type="image/jpeg")
