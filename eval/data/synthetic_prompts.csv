@@ -1,0 +1,8 @@
+uuid,scene_category,prompt,hour,heading,sidewalk_pct,notes
+syn-building-01,building_shadow,"Narrow gap between HDB blocks, deep wall shadow covering most of sidewalk in foreground",14,270,0.30,intended shade 4-5
+syn-building-02,building_shadow,"Tall office tower casts long shadow across concrete sidewalk, opposite side in sun",17,90,0.25,intended shade 4
+syn-linkway-01,covered_walkway,"Sheltered HDB linkway with continuous overhead cover, walkable path fills lower third",14,90,0.40,intended shade 5
+syn-mixed-building-01,mixed_sources,"Left half of sidewalk under building overhang, right half open to sky",14,0,0.35,intended shade 3
+syn-highpath-01,open_exposure,"Wide sidewalk dominates lower half of frame, no trees, harsh midday sun",12,45,0.45,intended shade 1
+syn-shelter-01,covered_walkway,"Bus stop shelter shades only a 3m pocket; rest of sidewalk in direct sun",14,180,0.30,intended shade 2-3
+syn-distant-01,open_exposure,"Green tree canopy visible ahead but foreground sidewalk fully exposed",14,180,0.30,intended shade 1; distant canopy trap
