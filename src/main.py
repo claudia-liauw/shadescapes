@@ -46,7 +46,9 @@ def score_images(force: bool = Query(default=False)):
 def get_image(filename: str):
     if not filename.endswith(".jpeg"):
         raise HTTPException(status_code=404, detail="Image not found")
-    image_path = config.IMAGES_DIR / filename
+    image_path = (config.IMAGES_DIR / filename).resolve()
+    if not image_path.is_relative_to(config.IMAGES_DIR.resolve()):
+        raise HTTPException(status_code=404, detail="Image not found")
     if not image_path.exists():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(image_path, media_type="image/jpeg")
