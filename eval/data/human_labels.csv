@@ -1,0 +1,31 @@
+uuid,shade_1to5,scene_category,notes
+144424e9-857e-440b-a4bc-fd979a4be00d,3,mixed_sources,"half tree, half open"
+17d50c04-4584-4424-933c-d56b52db6f40,1,open_exposure,can't really tell
+1e7a40c0-41a9-470a-a1bb-70fab7c33184,3,mixed_sources,"half tree, half open"
+282017c7-476a-41db-8df3-800b7487ea32,4,tree_canopy,
+2b6f5142-e669-4aba-84f5-c04b4eac11b0,5,tree_canopy,
+2bf39502-b160-452a-86d1-eaae4420cafd,1,open_exposure,
+4801a5d5-a895-4dc5-a8a0-bb78d3e22728,2,mixed_sources,trees exist but shadow is not on path
+49d87853-5f2e-4868-a1c3-b262c8fe1190,4,tree_canopy,a bit hard to tell
+4df38ad6-20d2-418a-862a-d2ce1356638c,4,tree_canopy,a bit hard to tell
+4facd764-58c6-4220-bc6c-d45ba3a0d3f7,5,tree_canopy,half the photo is the road
+508f39d3-7f3c-493f-a9e1-c115e7687393,,ambiguous_path,blocked by cars
+57b8b0c4-0a68-4fa5-bd0f-7bcc2d48febf,5,tree_canopy,
+595b2d35-871a-4b0d-9895-149b5daf72d1,,ambiguous_path,no sidewalk
+633c006b-2056-4287-bdd4-85e798ebd094,3,mixed_sources,trees exist but shadow is not completely on path
+6c3b1555-4464-42ec-8d2a-7d527529f922,5,tree_canopy,
+7f2b5e7c-51f3-4d0e-a02a-0591d26c089e,1,ambiguous_path,sidewalk is small
+8781dd82-98b2-4cb9-9bdb-c1b3744eaa09,2,ambiguous_path,hard to tell
+8ae678f7-e173-4e99-aec9-5655b9ab00ed,4,ambiguous_path,sidewalk to the side
+91ae3c5a-96eb-44b7-8261-3473a920ee84,1,mixed_sources,trees exist but do not cover
+a574e29f-bc2a-43fd-8944-93f6726c1b66,2,mixed_sources,"half tree, half open"
+ab80b6b3-cc6d-4a34-a95a-87f00270fb7f,5,tree_canopy,
+b97948c7-a7af-4ff8-ba97-9f8fbf07897e,4,mixed_sources,hard to tell
+bad323b4-8e47-4577-bed1-ccae403180f4,4,ambiguous_path,sidewalk to the side
+c0d12fad-9d9f-453c-b804-1dd1f1113302,3,mixed_sources,"half tree, half open"
+c5b735a9-76e8-416d-9f88-2b52cc0e48a0,4,tree_canopy,dappled shade
+cabdd3be-7e50-444f-abc2-ad0e5bc621fb,5,covered_walkway,
+d3ebafab-20b9-4bad-86d0-97eb808f15ed,,ambiguous_path,no sidewalk
+dd1baffd-c522-46e6-b669-0323a02945ac,4,tree_canopy,dappled shade
+dee05105-3feb-4377-855c-46ee7a41b208,4,tree_canopy,dappled shade
+f8c1badf-9058-4ac7-838c-fc5d724c98bb,5,tree_canopy,
