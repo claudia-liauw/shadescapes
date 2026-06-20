@@ -54,7 +54,11 @@ def _load_scores() -> pd.DataFrame:
 
 
 def load_map_points() -> pd.DataFrame:
-    metadata = pd.read_csv(config.METADATA_CSV)
+    try:
+        metadata = pd.read_csv(config.METADATA_CSV)
+    except FileNotFoundError:
+        # First-time setup: no metadata file yet; build_map() renders an empty map.
+        return pd.DataFrame()
     scores = _load_scores()
     image_uuids = _discover_image_uuids(config.IMAGES_DIR)
 
