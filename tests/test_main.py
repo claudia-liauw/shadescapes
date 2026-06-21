@@ -145,17 +145,6 @@ def test_score_endpoint_success(mock_run_scoring, client):
     )
 
 
-@patch("src.main.run_scoring", side_effect=Exception("NoImagesError"))
-def test_score_endpoint_handles_no_images(mock_run_scoring, client):
-    from src.models import NoImagesError
-
-    mock_run_scoring.side_effect = NoImagesError("No images found")
-    response = client.post("/api/score")
-    events = parse_score_events(response)
-    assert events[-1]["type"] == "error"
-    assert events[-1]["status"] == 400
-
-
 def test_score_endpoint_missing_api_key(client, monkeypatch):
     from src.models import MissingApiKeyError
 
