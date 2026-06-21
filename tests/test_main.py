@@ -56,6 +56,15 @@ def test_index_with_missing_metadata_optional_fields(client, data_dir):
     assert "No metadata file detected" not in response.text
 
 
+def test_index_with_missing_metadata_columns(client, data_dir):
+    metadata_path = data_dir / "data" / "filtered_streetscapes.csv"
+    pd.DataFrame([{"uuid": "aaa-111"}]).to_csv(metadata_path, index=False)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Missing metadata columns: lat, lon in data/filtered_streetscapes.csv" in response.text
+    assert "No metadata file detected" not in response.text
+
+
 def test_index_plots_all_metadata_regardless_of_images(client, data_dir):
     metadata_path = data_dir / "data" / "filtered_streetscapes.csv"
     metadata = pd.read_csv(metadata_path)

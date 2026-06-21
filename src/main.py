@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from src import config
 from src.map_builder import build_map, render_map_html
 from src.models import MissingApiKeyError, NoImagesError, NoMetadataError
-from src.score import run_scoring
+from src.score import find_missing_metadata_columns, run_scoring
 
 app = FastAPI(title="ShadeScapes")
 templates = Jinja2Templates(directory=str(config.PROJECT_ROOT / "templates"))
@@ -26,13 +26,23 @@ def index(request: Request):
     folium_map = build_map()
     map_html = render_map_html(folium_map)
     metadata_relative_path = config.relative_path(config.METADATA_CSV)
+    metadata_missing = not config.METADATA_CSV.exists()
+    metadata_warning: str | None = None
+    if not metadata_missing:
+        missing_columns = find_missing_metadata_columns(csv_path=config.METADATA_CSV)
+        if missing_columns:
+            missing_columns_list = ", ".join(missing_columns)
+            metadata_warning = (
+                f"Missing metadata columns: {missing_columns_list} in {metadata_relative_path}"
+            )
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "map_html": map_html,
-            "metadata_missing": not config.METADATA_CSV.exists(),
+            "metadata_missing": metadata_missing,
             "metadata_relative_path": metadata_relative_path,
+            "metadata_warning": metadata_warning,
         },
     )
 

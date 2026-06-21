@@ -18,7 +18,9 @@
     </div>
   </header>
 
-  {% if metadata_missing %}
+  {% if metadata_warning %}
+  <p class="metadata-notice" role="status">{{ metadata_warning }}</p>
+  {% elif metadata_missing %}
   <p class="metadata-notice" role="status">No metadata file detected: {{ metadata_relative_path }}</p>
   {% endif %}
 

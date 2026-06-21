@@ -7,7 +7,7 @@ import pandas as pd
 from pandas.errors import EmptyDataError
 
 from src import config
-from src.score import load_metadata
+from src.score import find_missing_metadata_columns, load_metadata
 
 
 def marker_color(score: float | None) -> str:
@@ -50,6 +50,9 @@ def _load_scores() -> pd.DataFrame:
 def load_map_points() -> pd.DataFrame:
     metadata = load_metadata()
     if metadata.empty:
+        return pd.DataFrame()
+    missing_columns = find_missing_metadata_columns(metadata)
+    if missing_columns:
         return pd.DataFrame()
     scores = _load_scores()
     points = metadata.copy()

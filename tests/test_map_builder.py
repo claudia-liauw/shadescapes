@@ -32,6 +32,13 @@ def test_load_map_points_missing_metadata(data_dir):
     assert points.empty
 
 
+def test_load_map_points_with_missing_metadata_columns(data_dir):
+    metadata_path = data_dir / "data" / "filtered_streetscapes.csv"
+    pd.DataFrame([{"uuid": "ccc-333"}]).to_csv(metadata_path, index=False)
+    points = load_map_points()
+    assert points.empty
+
+
 def test_load_map_points_plots_all_metadata_regardless_of_images(data_dir):
     metadata_path = data_dir / "data" / "filtered_streetscapes.csv"
     metadata = pd.read_csv(metadata_path)

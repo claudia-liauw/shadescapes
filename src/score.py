@@ -29,6 +29,7 @@ SCORE_COLUMNS = [
     "reasoning",
     "scored_at",
 ]
+METADATA_REQUIRED_COLUMNS = ["uuid", "lat", "lon"]
 RATE_LIMIT_MAX_REQUESTS_PER_MINUTE = 15
 RATE_LIMIT_PERIOD_SECONDS = 60.0
 
@@ -119,6 +120,22 @@ def load_metadata(csv_path: Path | None = None) -> pd.DataFrame:
         return pd.read_csv(path)
     except (FileNotFoundError, EmptyDataError):
         return pd.DataFrame()
+
+def find_missing_metadata_columns(
+    metadata: pd.DataFrame | None = None,
+    csv_path: Path | None = None,
+) -> list[str]:
+    if metadata is None:
+        path = csv_path or METADATA_CSV
+        try:
+            metadata = pd.read_csv(path, nrows=0)
+        except FileNotFoundError:
+            return []
+        except EmptyDataError:
+            return list(METADATA_REQUIRED_COLUMNS)
+    return [
+        column for column in METADATA_REQUIRED_COLUMNS if column not in metadata.columns
+    ]
 
 
 def load_existing_scores(csv_path: Path | None = None) -> pd.DataFrame:
@@ -337,9 +354,16 @@ def run_scoring(
     if not images:
         raise NoImagesError(f"No images found in {config.relative_path(IMAGES_DIR)}")
 
+    metadata = load_metadata()
     metadata_path = config.relative_path(METADATA_CSV)
+    missing_columns = find_missing_metadata_columns(metadata)
+    if missing_columns:
+        missing_columns_list = ", ".join(missing_columns)
+        raise NoMetadataError(
+            f"{metadata_path} missing columns: {missing_columns_list}"
+        )
     metadata_rows = {
-        str(row["uuid"]): row for _, row in load_metadata().iterrows()
+        str(row["uuid"]): row for _, row in metadata.iterrows()
     }
     existing = load_existing_scores()
     existing_uuids = set(existing["uuid"].astype(str)) if not existing.empty else set()
