@@ -70,12 +70,12 @@ flowchart TB
 | **Scorer**   | `src/score.py`                             | Discovers images, calls Gemini with a fixed JSON schema, validates responses, writes `data/scores.csv` |
 | **Map**      | `src/map_builder.py`                       | Joins metadata + scores on `uuid`, builds a Folium map with colour-coded markers and rich HTML popups  |
 | **API**      | `src/main.py`                              | Serves the map, triggers batch scoring, serves exploration images                                      |
-| **Frontend** | `templates/index.html`, `static/style.css` | Minimal UI — one button, status line (score success/failure etc.), embedded map                                                     |
+| **Frontend** | `templates/index.html`, `static/style.css` | Minimal UI — one button, status line (score progress), embedded map                                                     |
 
 
 ### VLM contract
 
-Each image is scored with `gemini-3.1-flash-lite` (override via `GEMINI_MODEL`). The prompt anchors to **pedestrian shade on the walkable path** and passes `heading` and `hour` from metadata when available.
+Each image is scored with `gemini-3.1-flash-lite` (override via `GEMINI_MODEL` in .env). The prompt anchors to **pedestrian shade on the walkable path** and passes `heading` and `hour` from metadata when available.
 
 ```json
 {
@@ -95,7 +95,7 @@ The demo and eval pipelines share `src.score.score_image` but use **separate dat
 
 |         | Demo app                     | Evaluation                                                                                        |
 | ------- | ---------------------------- | ------------------------------------------------------------------------------------------------- |
-| Images  | `data/images/sample/` (50)   | Noted in `eval/data/human_labels.csv` — `data/images/sample/` (30) + `data/images/synthetic/` (7) |
+| Images  | `data/images/sample/` (45)   | Noted in `eval/data/human_labels.csv` — `data/images/sample/` (30) + `data/images/synthetic/` (7) |
 | Scores  | `data/scores.csv`            | `eval/data/scores.csv`                                                                            |
 | Trigger | Button in browser            | `uv run python -m eval.score_eval`                                                                |
 | Purpose | Live "AI runs on click" demo | Human-label comparison, stability, error analysis                                                 |
@@ -129,7 +129,7 @@ shadescapes/
 │   ├── synthetic_streetscapes.csv  # metadata for generated eval images
 │   ├── scores.csv                  # demo VLM outputs (written by app, not committed)
 │   └── images/
-│       ├── sample/                 # ~50 JPEGs — image pool
+│       ├── sample/                 # 45 JPEGs — image pool
 │       └── synthetic/              # 7 PNGs — generated gap-fill for eval
 │
 ├── eval/
@@ -150,7 +150,7 @@ shadescapes/
 |                 |                                                                                                                                                                                                                                                             |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Source**      | [NUS-UAL/global-streetscapes](https://huggingface.co/datasets/NUS-UAL/global-streetscapes) — Mapillary street-level imagery with contextual metadata                                                                                                        |
-| **Filter**      | `country = 'Singapore'`; `lighting_condition = 'day'`; `platform = 'walking surface'`; `quality = 'good'`; `weather = 'clear'`; `source = 'Mapillary'`; `Sidewalk > 0`; then spatial cluster around one corridor (~53 metadata rows, ~50 downloaded images) |
+| **Filter**      | `country = 'Singapore'`; `lighting_condition = 'day'`; `platform = 'walking surface'`; `quality = 'good'`; `weather = 'clear'`; `source = 'Mapillary'`; `Sidewalk > 0`; then spatial cluster around one corridor (~53 metadata rows, 45 downloaded images) |
 | **Metadata**    | Per image in `data/filtered_streetscapes.csv`: `lat`, `lon`, `hour`, `heading`, `sidewalk_pct` — map placement, capture time/direction, and sidewalk share of frame |
 | **Eval subset** | Author-curated ~30 real images from `sample/` plus 7 synthetic images for category gaps (`building_shadow`, true `covered_walkway`, etc.); each image hand-labeled for pedestrian shade (1–5) and `scene_category` |
 | **Licensing**   | Mapillary imagery per source terms; dataset CC-licensed                                                                                                                                                                                                     |
@@ -190,8 +190,8 @@ Full methodology, charts, and mismatch galleries are in `[eval/evaluation.ipynb]
 
 - **Moderate agreement with humans** — ρ ≈ 0.53 suggests the VLM captures rank-order shade reasonably well on this corridor, but is not production-ready without more data and calibration.
 - **Run stability is good on the tested subset** — scores are repeatable across API calls, so disagreement with humans is more likely about correctness than noise.
-- `**tree_canopy` is the hardest category** — most mismatches cluster here; dappled light and off-path greenery confuse both rater and model.
-- `**open_exposure` is generally accurate** — important for flagging truly hot corridors.
+- **`tree_canopy` is the hardest category** — most mismatches cluster here; dappled light and off-path greenery confuse both rater and model.
+- **`open_exposure` is generally accurate** — important for flagging truly hot corridors.
 - **Covered walkways split rater and model** — linkways technically provide full shade, but visible sun patches in frame led the human rater to score lower while the VLM scored high; the model may be closer to the intended construct here.
 - **Label uncertainty matters** — roughly half of Tier C errors are on images the rater was also unsure about; ambiguous framing drives disagreement as much as model failure.
 
@@ -216,6 +216,7 @@ uv run python eval/run_notebook.py
 
 - Docker and Docker Compose
 - A [Google AI API key](https://aistudio.google.com/apikey) with Gemini access
+- **Your own data:** street-level images and a filtered metadata CSV (`data/filtered_streetscapes.csv` in this repo). The CSV must join to images on `uuid` and include fields used for scoring and mapping (`lat`, `lon`, `hour`, `heading`, etc.). For this prototype, both are committed — JPEGs under `data/images/sample/` and the metadata file above. Replace or extend those paths in `config.py` to score a different corridor.
 
 ### Steps
 
@@ -234,7 +235,7 @@ uv sync
 uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Open [http://localhost:8000](http://localhost:8000). Click **Run Shade Scoring** to call the VLM on the 50 sample images. Markers turn green (shaded) → yellow → red (exposed); click a marker for the score, shade sources, confidence, reasoning, and thumbnail.
+Open [http://localhost:8000](http://localhost:8000). Click **Run Shade Scoring** to call the VLM on the 45 sample images. Markers turn green (shaded) → yellow → red (exposed); click a marker for the score, shade sources, confidence, reasoning, and thumbnail.
 
 ### Tests
 
@@ -247,11 +248,12 @@ uv run pytest -m integration     # live Gemini tests (requires GOOGLE_API_KEY)
 
 ## Limitations
 
+- **Agreement with humans is only moderate** — Spearman ρ ≈ 0.53 and MAE ≈ 0.26 on 27 real images are useful for ranking corridors but not high enough for fine-grained planning without review. Future work can include switching to a better model, prompt tuning (e.g. few-shot prompting), or addressing below limitations.
 - **Coverage** — Evaluation covers a small hand-labeled set from a single Singapore corridor; findings should not be read as island-wide.
-- **Synthetic gap-fill** — Only seven generated images stress-test edge cases; their realism and prompt fidelity could be improved.
+- **Synthetic gap-fill** — Only seven generated images stress-test edge cases; their realism and use case fidelity could be improved.
 - **Ground-truth noise** — One rater labeled all images. Images can be hard to judge even for humans, and sidewalks are frequently partial, obstructed, or pushed to the frame edge.
 - **Score calibration** — Reasoning and numeric scores sometimes disagree (e.g. exposed path but score of 0.35). The model also returns `high` confidence on nearly every image.
-- **API throughput** — Free-tier rate limits cap batches at 15 requests/min, so end-to-end scoring feels slow in the demo.
+- **API dependence** — Free-tier rate limits cap batches at 15 requests/min, so end-to-end scoring feels slow in the demo.
 - **Operational scale** — Evaluation is manual and labour-intensive; production use would remain tied to external API availability, latency, and cost.
 
 ---
@@ -260,7 +262,7 @@ uv run pytest -m integration     # live Gemini tests (requires GOOGLE_API_KEY)
 
 **Who would run this:** A government agency data team (NParks, URA) batch-scoring a curated set of street images and metadata, with results served on an internal map. A citizen-facing variant — pick a shaded walking route from scored corridors — was explored early on but dropped for this prototype.
 
-**Compute and cost:** The demo scores 9 images in ~12 s via API. At island scale (~500k street images), sequential Gemini calls would cost thousands of dollars and take days. Production would need batched open-weight VLMs on GPU, distillation to a smaller classifier, or sparse re-scoring on changed corridors only. Expect ~1–2 GB RAM for the FastAPI container; inference cost dominates.
+**Compute and cost (rough estimates):** Each batch scores 15 images in parallel in ~2–3 s via the Gemini API. The demo is throttled to 15 requests/min on the free tier, so wall-clock time is mostly waiting between batches; a paid or production quota could run batches back-to-back at that ~2–3 s cadence. At island scale (~500k street images), that is still on the order of tens of hours of API time and thousands of dollars in inference cost — so production would likely also need batched open-weight VLMs on GPU, distillation to a smaller classifier, or sparse re-scoring on changed corridors only. Expect ~1–2 GB RAM for the FastAPI container; inference cost dominates. See [`docs/deployment-estimates.md`](docs/deployment-estimates.md) for how these figures were derived.
 
 **Monitoring:** Track API failure and parse-error rates, prediction latency, and quota exhaustion. Route low-`confidence` scores to human review before they inform planning. For ongoing analysis, a lightweight classifier could tag high-salience categories (e.g. `tree_canopy`, `covered_walkway`) without calling the VLM on every image. Collect optional user feedback — *does this score match what you see on the ground?* — to catch drift and build a correction loop over time.
 
@@ -272,4 +274,5 @@ uv run pytest -m integration     # live Gemini tests (requires GOOGLE_API_KEY)
 
 - `[PROCESS.md](PROCESS.md)` — build narrative, decisions dropped, where judgment was exercised
 - `[eval/evaluation.ipynb](eval/evaluation.ipynb)` — full eval with Tier A/B/C outputs and image galleries
+- `[docs/deployment-estimates.md](docs/deployment-estimates.md)` — assumptions behind deployment time, cost, and RAM figures
 

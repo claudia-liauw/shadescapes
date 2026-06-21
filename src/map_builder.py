@@ -1,14 +1,13 @@
 import json
 import re
 from html import escape
-from pathlib import Path
 
 import folium
 import pandas as pd
 from pandas.errors import EmptyDataError
 
 from src import config
-from src.score import load_metadata
+from src.score import find_missing_metadata_columns, load_metadata
 
 
 def marker_color(score: float | None) -> str:
@@ -19,12 +18,6 @@ def marker_color(score: float | None) -> str:
     if score >= 0.4:
         return "#f1c40f"
     return "#e74c3c"
-
-
-def _discover_image_uuids(directory: Path) -> set[str]:
-    if not directory.exists():
-        return set()
-    return {path.stem for path in directory.glob("*.jpeg")}
 
 
 def _load_scores() -> pd.DataFrame:
@@ -58,10 +51,11 @@ def load_map_points() -> pd.DataFrame:
     metadata = load_metadata()
     if metadata.empty:
         return pd.DataFrame()
+    missing_columns = find_missing_metadata_columns(metadata)
+    if missing_columns:
+        return pd.DataFrame()
     scores = _load_scores()
-    image_uuids = _discover_image_uuids(config.IMAGES_DIR)
-
-    points = metadata[metadata["uuid"].isin(image_uuids)].copy()
+    points = metadata.copy()
     if scores.empty:
         points["pedestrian_shade_score"] = None
         points["shade_sources"] = None

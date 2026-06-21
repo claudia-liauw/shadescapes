@@ -16,6 +16,7 @@ class ScoreSummary(BaseModel):
     skip_reasons: dict[str, int] = Field(default_factory=dict)
     skips: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    progress: list[str] = Field(default_factory=list)
     elapsed_seconds: float | None = None
 
     @computed_field
@@ -48,7 +49,7 @@ class ScoreSummary(BaseModel):
 
 
 class NoImagesError(Exception):
-    """Raised when the exploration image directory has no JPEG files."""
+    """Raised when the configured image directory has no JPEG files."""
 
 
 class NoMetadataError(Exception):

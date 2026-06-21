@@ -1,4 +1,5 @@
 import json
+import math
 import re
 import time
 from collections.abc import Callable
@@ -28,6 +29,7 @@ SCORE_COLUMNS = [
     "reasoning",
     "scored_at",
 ]
+METADATA_REQUIRED_COLUMNS = ["uuid", "lat", "lon"]
 RATE_LIMIT_MAX_REQUESTS_PER_MINUTE = 15
 RATE_LIMIT_PERIOD_SECONDS = 60.0
 
@@ -119,6 +121,22 @@ def load_metadata(csv_path: Path | None = None) -> pd.DataFrame:
     except (FileNotFoundError, EmptyDataError):
         return pd.DataFrame()
 
+def find_missing_metadata_columns(
+    metadata: pd.DataFrame | None = None,
+    csv_path: Path | None = None,
+) -> list[str]:
+    if metadata is None:
+        path = csv_path or METADATA_CSV
+        try:
+            metadata = pd.read_csv(path, nrows=0)
+        except FileNotFoundError:
+            return []
+        except EmptyDataError:
+            return list(METADATA_REQUIRED_COLUMNS)
+    return [
+        column for column in METADATA_REQUIRED_COLUMNS if column not in metadata.columns
+    ]
+
 
 def load_existing_scores(csv_path: Path | None = None) -> pd.DataFrame:
     path = csv_path or SCORES_CSV
@@ -151,6 +169,68 @@ def _format_batch_error(key: Any, error: str) -> str:
     return f"{key}: {error}"
 
 
+def _emit_progress(
+    message: str,
+    progress_log: list[str],
+    on_progress: Callable[[str], None] | None = None,
+    *,
+    record: bool = True,
+) -> None:
+    print(message)
+    if record:
+        progress_log.append(message)
+    if on_progress is not None:
+        on_progress(message)
+
+
+def _format_batch_complete_message(
+    batch_number: int,
+    completed_requests: int,
+    total_to_score: int,
+    *,
+    waiting_seconds: int | None = None,
+) -> str:
+    message = (
+        f"Batch {batch_number} complete "
+        f"({completed_requests}/{total_to_score} total processed)"
+    )
+    if waiting_seconds is not None:
+        message += (
+            f", rate limit: waiting {waiting_seconds}s before next batch "
+            f"({RATE_LIMIT_MAX_REQUESTS_PER_MINUTE}/min max)"
+        )
+    return message
+
+
+def _wait_with_countdown(
+    batch_number: int,
+    completed_requests: int,
+    total_to_score: int,
+    sleep_time: float,
+    progress_log: list[str],
+    on_progress: Callable[[str], None] | None,
+) -> None:
+    end_time = time.perf_counter() + sleep_time
+    recorded = False
+    while True:
+        remaining = max(0, math.ceil(end_time - time.perf_counter()))
+        if remaining <= 0:
+            break
+        _emit_progress(
+            _format_batch_complete_message(
+                batch_number,
+                completed_requests,
+                total_to_score,
+                waiting_seconds=remaining,
+            ),
+            progress_log,
+            on_progress,
+            record=not recorded,
+        )
+        recorded = True
+        time.sleep(min(1.0, end_time - time.perf_counter()))
+
+
 def run_scoring_batch(
     to_score: list[tuple[Any, Path, pd.Series]],
     *,
@@ -162,6 +242,7 @@ def run_scoring_batch(
     pre_errors: list[str] | None = None,
     started_at: float | None = None,
     on_scored: Callable[[Any, ShadeScore], None] | None = None,
+    on_progress: Callable[[str], None] | None = None,
 ) -> tuple[list[dict], ScoreSummary]:
     started = started_at if started_at is not None else time.perf_counter()
     if require_api_key and not config.get_google_api_key():
@@ -169,6 +250,7 @@ def run_scoring_batch(
 
     rows: list[dict] = []
     errors: list[str] = list(pre_errors or [])
+    progress_log: list[str] = []
     total_to_score = len(to_score)
 
     if to_score:
@@ -180,9 +262,11 @@ def run_scoring_batch(
                 batch_index * batch_size : (batch_index + 1) * batch_size
             ]
             batch_start = time.perf_counter()
-            print(
+            _emit_progress(
                 f"Batch {batch_index + 1}/{total_batches}: scoring {len(batch)} requests "
-                f"({completed_requests}/{total_to_score} processed so far)"
+                f"({completed_requests}/{total_to_score} processed so far)",
+                progress_log,
+                on_progress,
             )
             with ThreadPoolExecutor(max_workers=min(BATCH_SIZE, len(batch))) as executor:
                 futures = [
@@ -198,19 +282,38 @@ def run_scoring_batch(
                         if on_scored is not None:
                             on_scored(key, result)
                     completed_requests += 1
-            print(
-                f"Batch {batch_index + 1} complete "
-                f"({completed_requests}/{total_to_score} total processed)"
-            )
             if batch_index < total_batches - 1:
                 elapsed = time.perf_counter() - batch_start
                 sleep_time = RATE_LIMIT_PERIOD_SECONDS - elapsed
                 if sleep_time > 0:
-                    print(
-                        f"Rate limit: waiting {sleep_time:.1f}s "
-                        f"before next batch ({RATE_LIMIT_MAX_REQUESTS_PER_MINUTE}/min max)"
+                    _wait_with_countdown(
+                        batch_index + 1,
+                        completed_requests,
+                        total_to_score,
+                        sleep_time,
+                        progress_log,
+                        on_progress,
                     )
-                    time.sleep(sleep_time)
+                else:
+                    _emit_progress(
+                        _format_batch_complete_message(
+                            batch_index + 1,
+                            completed_requests,
+                            total_to_score,
+                        ),
+                        progress_log,
+                        on_progress,
+                    )
+            else:
+                _emit_progress(
+                    _format_batch_complete_message(
+                        batch_index + 1,
+                        completed_requests,
+                        total_to_score,
+                    ),
+                    progress_log,
+                    on_progress,
+                )
 
     elapsed_seconds = round(time.perf_counter() - started, 1)
     summary = ScoreSummary(
@@ -219,6 +322,7 @@ def run_scoring_batch(
         skip_reasons={key: count for key, count in (skip_reasons or {}).items() if count},
         skips=skips or [],
         errors=errors,
+        progress=progress_log,
         elapsed_seconds=elapsed_seconds,
     )
     return rows, summary
@@ -235,20 +339,31 @@ def build_score_row(uuid: str, result: ShadeScore) -> dict:
     }
 
 
-def run_scoring(force: bool = False) -> ScoreSummary:
+def run_scoring(
+    force: bool = False,
+    on_progress: Callable[[str], None] | None = None,
+) -> ScoreSummary:
     started_at = time.perf_counter()
     if not config.get_google_api_key():
         raise MissingApiKeyError("GOOGLE_API_KEY is not configured")
 
+    if not METADATA_CSV.exists():
+        raise NoMetadataError(f"{config.relative_path(METADATA_CSV)} not found")
+
     images = discover_images()
     if not images:
-        raise NoImagesError(f"No images found in {IMAGES_DIR}")
+        raise NoImagesError(f"No images found in {config.relative_path(IMAGES_DIR)}")
 
-    if not METADATA_CSV.exists():
-        raise NoMetadataError(f"{METADATA_CSV} not found")
-
+    metadata = load_metadata()
+    metadata_path = config.relative_path(METADATA_CSV)
+    missing_columns = find_missing_metadata_columns(metadata)
+    if missing_columns:
+        missing_columns_list = ", ".join(missing_columns)
+        raise NoMetadataError(
+            f"{metadata_path} missing columns: {missing_columns_list}"
+        )
     metadata_rows = {
-        str(row["uuid"]): row for _, row in load_metadata().iterrows()
+        str(row["uuid"]): row for _, row in metadata.iterrows()
     }
     existing = load_existing_scores()
     existing_uuids = set(existing["uuid"].astype(str)) if not existing.empty else set()
@@ -264,7 +379,7 @@ def run_scoring(force: bool = False) -> ScoreSummary:
         if uuid not in metadata_rows:
             skipped_count += 1
             skip_reasons["missing_metadata"] += 1
-            skips.append(f"{uuid}: no metadata row in filtered_streetscapes.csv")
+            skips.append(f"{uuid}: no metadata row in {metadata_path}")
             continue
         if not force and uuid in existing_uuids:
             skipped_count += 1
@@ -281,6 +396,7 @@ def run_scoring(force: bool = False) -> ScoreSummary:
         skip_reasons=skip_reasons,
         skips=skips,
         started_at=started_at,
+        on_progress=on_progress,
     )
     for row in new_rows:
         rows_by_uuid[row["uuid"]] = row
