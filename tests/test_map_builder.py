@@ -52,8 +52,8 @@ def test_load_map_points_plots_all_metadata_regardless_of_images(data_dir):
     )
     pd.concat([metadata, extra_row], ignore_index=True).to_csv(metadata_path, index=False)
 
-    exploration = data_dir / "data" / "images" / "exploration"
-    (exploration / "bbb-222.jpeg").unlink()
+    images_dir = data_dir / "data" / "images"
+    (images_dir / "bbb-222.jpeg").unlink()
 
     points = load_map_points()
     assert len(points) == 3

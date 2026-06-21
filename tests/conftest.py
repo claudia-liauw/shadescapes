@@ -33,8 +33,8 @@ def gemini_api_fails(gemini_response):
 
 @pytest.fixture
 def image_without_metadata(data_dir):
-    exploration = data_dir / "data" / "images" / "exploration"
-    (exploration / "ccc-333.jpeg").write_bytes(b"fake-image-3")
+    images_root = data_dir / "data" / "images"
+    (images_root / "ccc-333.jpeg").write_bytes(b"fake-image-3")
     return data_dir
 
 
@@ -68,10 +68,10 @@ def sample_metadata_rows():
 
 @pytest.fixture
 def data_dir(tmp_path, sample_metadata_rows, monkeypatch):
-    exploration = tmp_path / "data" / "images" / "exploration"
-    exploration.mkdir(parents=True)
-    (exploration / "aaa-111.jpeg").write_bytes(b"fake-image-1")
-    (exploration / "bbb-222.jpeg").write_bytes(b"fake-image-2")
+    images_root = tmp_path / "data" / "images"
+    images_root.mkdir(parents=True)
+    (images_root / "aaa-111.jpeg").write_bytes(b"fake-image-1")
+    (images_root / "bbb-222.jpeg").write_bytes(b"fake-image-2")
 
     metadata_path = tmp_path / "data" / "filtered_streetscapes.csv"
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,9 +81,9 @@ def data_dir(tmp_path, sample_metadata_rows, monkeypatch):
     monkeypatch.setattr("src.config.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("src.config.DATA_DIR", tmp_path / "data")
     monkeypatch.setattr("src.config.METADATA_CSV", metadata_path)
-    monkeypatch.setattr("src.config.IMAGES_DIR", exploration)
+    monkeypatch.setattr("src.config.IMAGES_DIR", images_root)
     monkeypatch.setattr("src.config.SCORES_CSV", scores_path)
-    monkeypatch.setattr("src.score.IMAGES_DIR", exploration)
+    monkeypatch.setattr("src.score.IMAGES_DIR", images_root)
     monkeypatch.setattr("src.score.METADATA_CSV", metadata_path)
     monkeypatch.setattr("src.score.SCORES_CSV", scores_path)
     return tmp_path
@@ -92,10 +92,10 @@ def data_dir(tmp_path, sample_metadata_rows, monkeypatch):
 @pytest.fixture
 def integration_data_dir(tmp_path, sample_metadata_rows, monkeypatch):
     """Temp data dir with a real JPEG for live Gemini integration tests."""
-    exploration = tmp_path / "data" / "images" / "exploration"
-    exploration.mkdir(parents=True)
+    images_root = tmp_path / "data" / "images"
+    images_root.mkdir(parents=True)
 
-    image_path = exploration / "aaa-111.jpeg"
+    image_path = images_root / "aaa-111.jpeg"
     Image.new("RGB", (128, 128), color=(90, 140, 70)).save(image_path, format="JPEG")
 
     metadata_path = tmp_path / "data" / "filtered_streetscapes.csv"
@@ -106,9 +106,9 @@ def integration_data_dir(tmp_path, sample_metadata_rows, monkeypatch):
     monkeypatch.setattr("src.config.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("src.config.DATA_DIR", tmp_path / "data")
     monkeypatch.setattr("src.config.METADATA_CSV", metadata_path)
-    monkeypatch.setattr("src.config.IMAGES_DIR", exploration)
+    monkeypatch.setattr("src.config.IMAGES_DIR", images_root)
     monkeypatch.setattr("src.config.SCORES_CSV", scores_path)
-    monkeypatch.setattr("src.score.IMAGES_DIR", exploration)
+    monkeypatch.setattr("src.score.IMAGES_DIR", images_root)
     monkeypatch.setattr("src.score.METADATA_CSV", metadata_path)
     monkeypatch.setattr("src.score.SCORES_CSV", scores_path)
     return tmp_path

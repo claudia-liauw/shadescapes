@@ -12,7 +12,7 @@ from src.config import (
 def test_paths_are_under_project_root():
     assert PROJECT_ROOT.is_dir()
     assert METADATA_CSV == PROJECT_ROOT / "data" / "filtered_streetscapes.csv"
-    assert IMAGES_DIR == PROJECT_ROOT / "data" / "images" / "exploration"
+    assert IMAGES_DIR == PROJECT_ROOT / "data" / "images" / "sample"
     assert SCORES_CSV == PROJECT_ROOT / "data" / "scores.csv"
 
 

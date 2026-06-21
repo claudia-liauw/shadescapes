@@ -21,9 +21,9 @@ def test_discover_images(data_dir):
 
 
 def test_discover_images_empty(tmp_path, monkeypatch):
-    exploration = tmp_path / "data" / "images" / "exploration"
-    exploration.mkdir(parents=True)
-    monkeypatch.setattr("src.score.IMAGES_DIR", exploration)
+    images_root = tmp_path / "data" / "images"
+    images_root.mkdir(parents=True)
+    monkeypatch.setattr("src.score.IMAGES_DIR", images_root)
     assert discover_images() == []
 
 
@@ -89,7 +89,7 @@ def test_load_existing_scores_empty_file(data_dir):
 def test_score_image_success(mock_call, data_dir, monkeypatch, gemini_response):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     mock_call.return_value = gemini_response
-    image_path = data_dir / "data" / "images" / "exploration" / "aaa-111.jpeg"
+    image_path = data_dir / "data" / "images" / "aaa-111.jpeg"
     metadata = pd.read_csv(data_dir / "data" / "filtered_streetscapes.csv")
     row = metadata.loc[metadata["uuid"] == "aaa-111"].iloc[0]
     result = score_image(image_path, row)
@@ -99,7 +99,7 @@ def test_score_image_success(mock_call, data_dir, monkeypatch, gemini_response):
 @patch("src.score._call_gemini", side_effect=RuntimeError("API down"))
 def test_score_image_does_not_retry_on_api_error(mock_call, data_dir, monkeypatch):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    image_path = data_dir / "data" / "images" / "exploration" / "aaa-111.jpeg"
+    image_path = data_dir / "data" / "images" / "aaa-111.jpeg"
     metadata = pd.read_csv(data_dir / "data" / "filtered_streetscapes.csv")
     row = metadata.loc[metadata["uuid"] == "aaa-111"].iloc[0]
     with pytest.raises(RuntimeError, match="API down"):
@@ -250,13 +250,13 @@ def test_run_scoring_missing_metadata(data_dir, monkeypatch):
 
 
 def test_run_scoring_no_images(tmp_path, monkeypatch):
-    exploration = tmp_path / "data" / "images" / "exploration"
-    exploration.mkdir(parents=True)
+    images_root = tmp_path / "data" / "images"
+    images_root.mkdir(parents=True)
     monkeypatch.setattr("src.config.PROJECT_ROOT", tmp_path)
-    monkeypatch.setattr("src.score.IMAGES_DIR", exploration)
+    monkeypatch.setattr("src.score.IMAGES_DIR", images_root)
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     with pytest.raises(
-        NoImagesError, match="No images found in data/images/exploration"
+        NoImagesError, match="No images found in data/images"
     ):
         run_scoring()
 

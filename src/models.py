@@ -49,7 +49,7 @@ class ScoreSummary(BaseModel):
 
 
 class NoImagesError(Exception):
-    """Raised when the exploration image directory has no JPEG files."""
+    """Raised when the configured image directory has no JPEG files."""
 
 
 class NoMetadataError(Exception):
