@@ -199,7 +199,7 @@ def test_run_scoring_skips_missing_metadata_row(mock_score_image, data_dir, monk
     assert summary.scored == 1
     assert summary.skipped == 1
     assert summary.skip_reasons == {"missing_metadata": 1}
-    assert summary.skips == ["bbb-222: no metadata row in filtered_streetscapes.csv"]
+    assert summary.skips == ["bbb-222: no metadata row in data/filtered_streetscapes.csv"]
     mock_score_image.assert_called_once()
 
 

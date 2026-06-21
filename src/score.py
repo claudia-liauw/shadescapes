@@ -330,13 +330,14 @@ def run_scoring(
     if not config.get_google_api_key():
         raise MissingApiKeyError("GOOGLE_API_KEY is not configured")
 
+    if not METADATA_CSV.exists():
+        raise NoMetadataError(f"{config.relative_path(METADATA_CSV)} not found")
+
     images = discover_images()
     if not images:
         raise NoImagesError(f"No images found in {config.relative_path(IMAGES_DIR)}")
 
-    if not METADATA_CSV.exists():
-        raise NoMetadataError(f"{config.relative_path(METADATA_CSV)} not found")
-
+    metadata_path = config.relative_path(METADATA_CSV)
     metadata_rows = {
         str(row["uuid"]): row for _, row in load_metadata().iterrows()
     }
@@ -354,7 +355,7 @@ def run_scoring(
         if uuid not in metadata_rows:
             skipped_count += 1
             skip_reasons["missing_metadata"] += 1
-            skips.append(f"{uuid}: no metadata row in filtered_streetscapes.csv")
+            skips.append(f"{uuid}: no metadata row in {metadata_path}")
             continue
         if not force and uuid in existing_uuids:
             skipped_count += 1
