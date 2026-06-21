@@ -2,7 +2,7 @@
 
 A vision-language model (VLM) prototype that scores pedestrian shade from street-level imagery and maps the results for a Singapore corridor.
 
-**Demo video:** [add Loom URL here]
+**Demo video:** [https://www.loom.com/share/9985216697b741d6bfc39071ba8a2e12](https://www.loom.com/share/9985216697b741d6bfc39071ba8a2e12)
 
 ---
 
@@ -262,7 +262,7 @@ uv run pytest -m integration     # live Gemini tests (requires GOOGLE_API_KEY)
 
 **Who would run this:** A government agency data team (NParks, URA) batch-scoring a curated set of street images and metadata, with results served on an internal map. A citizen-facing variant — pick a shaded walking route from scored corridors — was explored early on but dropped for this prototype.
 
-**Compute and cost (rough estimates):** Each batch scores 15 images in parallel in ~2–3 s via the Gemini API. The demo is throttled to 15 requests/min on the free tier, so wall-clock time is mostly waiting between batches; a paid or production quota could run batches back-to-back at that ~2–3 s cadence. At island scale (~500k street images), that is still on the order of tens of hours of API time and thousands of dollars in inference cost — so production would likely also need batched open-weight VLMs on GPU, distillation to a smaller classifier, or sparse re-scoring on changed corridors only. Expect ~1–2 GB RAM for the FastAPI container; inference cost dominates. See [`docs/deployment-estimates.md`](docs/deployment-estimates.md) for how these figures were derived.
+**Compute and cost (rough estimates):** Each batch scores 15 images in parallel via the Gemini API in **~2–12 s** (best case ~2 s when all calls land quickly; up to ~12 s when one straggler or JSON-retry call sets batch time). The demo is throttled to 15 requests/min on the free tier, so end-to-end scoring feels slow mostly from waiting between batches; a paid or production quota could run batches back-to-back at that ~2–12 s cadence. At island scale (~500k street images), API time is on the order of tens of hours at typical batch speeds, but could stretch toward ~100+ h if many batches hit the slow end — plus thousands of dollars in inference cost — so production would likely also need batched open-weight VLMs on GPU, distillation to a smaller classifier, or sparse re-scoring on changed corridors only. Expect ~1–2 GB RAM for the FastAPI container; inference cost dominates. See `[docs/deployment-estimates.md](docs/deployment-estimates.md)` for how these figures were derived.
 
 **Monitoring:** Track API failure and parse-error rates, prediction latency, and quota exhaustion. Route low-`confidence` scores to human review before they inform planning. For ongoing analysis, a lightweight classifier could tag high-salience categories (e.g. `tree_canopy`, `covered_walkway`) without calling the VLM on every image. Collect optional user feedback — *does this score match what you see on the ground?* — to catch drift and build a correction loop over time.
 

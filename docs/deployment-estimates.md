@@ -6,7 +6,7 @@ Back-of-envelope figures cited in the README **Deployment considerations** secti
 
 ---
 
-## Batch latency (~2–3 s for 15 images)
+## Batch latency (~2–12 s for 15 images)
 
 **Source:** Observed during development (not from a benchmark script in-repo).
 
@@ -15,13 +15,23 @@ Back-of-envelope figures cited in the README **Deployment considerations** secti
 - `BATCH_SIZE = 15` — up to 15 Gemini calls run in parallel per batch (`ThreadPoolExecutor` in `src/score.py`).
 - Wall-clock per batch ≈ latency of the **slowest** call in that batch, not 15× a single call.
 
-So if one VLM request takes ~2–3 s, a full 15-image batch finishes in roughly the same time.
+When all parallel calls land quickly, a batch finishes in ~2 s. When one call is slow, the whole batch waits — observed range **~2–12 s** per 15-image batch.
+
+**Why batches vary:**
+
+| Factor | Effect |
+| ------ | ------ |
+| **Slowest-call bottleneck** | 14 fast calls do not shorten batch time; one straggler sets wall-clock. |
+| **Gemini API jitter** | Remote inference latency varies with load, routing, and queue depth. |
+| **JSON parse retries** | If the first response is not valid JSON, `score_image` issues a second API call for that image (~2× latency for that request). |
+| **Image workload** | JPEG size and scene complexity affect vision encoding time. |
+| **Burst concurrency** | 15 parallel requests on the free tier can occasionally hit soft throttling. |
 
 ---
 
 ## Demo wall-clock vs inference time
 
-The demo feels much slower than 2–3 s per batch because of the free-tier rate limit:
+The demo feels much slower than ~2–12 s per batch because of the free-tier rate limit:
 
 | Constant | Value |
 | -------- | ----- |
@@ -35,10 +45,10 @@ After each batch, the app sleeps `60 s − batch_duration` before starting the n
 | | |
 | - | - |
 | Batches | ⌈45 ÷ 15⌉ = **3** |
-| Inference only | 3 × ~2–3 s ≈ **6–9 s** |
+| Inference only | 3 × ~2–12 s ≈ **6–36 s** |
 | Demo wall-clock | 3 × ~60 s ≈ **~3 min** |
 
-Production with a higher API quota could run batches back-to-back at the ~2–3 s cadence instead of waiting a full minute between batches.
+Production with a higher API quota could run batches back-to-back at the ~2–12 s cadence instead of waiting a full minute between batches.
 
 ---
 
@@ -57,10 +67,10 @@ total_time ≈ (image_count ÷ batch_size) × seconds_per_batch
 | Images | 500,000 |
 | Batch size | 15 |
 | Batches | 500,000 ÷ 15 ≈ **33,300** |
-| At 2 s/batch | 33,300 × 2 ≈ **18.5 h** |
-| At 3 s/batch | 33,300 × 3 ≈ **27.8 h** |
+| At 2 s/batch (best case) | 33,300 × 2 ≈ **18.5 h** |
+| At 12 s/batch (slow case) | 33,300 × 12 ≈ **111 h** |
 
-Hence **“tens of hours”** (~20–30 h of API time if batches run continuously).
+Hence **“tens of hours”** at typical ~2–3 s batches, but **up to ~100+ h** if many batches hit the slow end of the observed range. Use p50/p95 batch logging (see below) for production planning.
 
 ---
 
@@ -129,9 +139,9 @@ API inference spend dominates operating cost; container CPU/RAM is secondary for
 
 | Claim | Basis | Confidence |
 | ----- | ----- | ---------- |
-| ~2–3 s / 15 images | Observed batch latency; matches parallel scoring in `score.py` | Medium — spot-checked, not automated |
+| ~2–12 s / 15 images | Observed batch latency; slowest parallel call sets wall-clock | Medium — spot-checked, not automated |
 | Demo feels slow | 15 req/min rate limit + sleep between batches | High — enforced in code |
-| Tens of hours @ 500k | 500k ÷ 15 × 2–3 s ≈ 18–28 h, no rate limit | Medium — depends on image count assumption |
+| Tens of hours @ 500k | 500k ÷ 15 × 2–12 s ≈ 18–111 h, no rate limit | Medium — depends on image count and API jitter |
 | Thousands of $ | Token pricing × image count; sensitive to tokens/image | Low–medium — order of magnitude only |
 | 1–2 GB RAM | Slim Python API container heuristic | Low — not measured |
 
