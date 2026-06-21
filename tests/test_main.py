@@ -126,14 +126,23 @@ def test_score_endpoint_no_images(client, data_dir, monkeypatch):
 
 @patch("src.main.run_scoring")
 def test_score_endpoint_success(mock_run_scoring, client):
-    mock_run_scoring.return_value = ScoreSummary(scored=2, skipped=1, errors=[])
+    mock_run_scoring.return_value = ScoreSummary(
+        scored=2,
+        skipped=1,
+        skip_reasons={"missing_metadata": 1},
+        errors=[],
+    )
     response = client.post("/api/score")
     assert response.status_code == 200
     events = parse_score_events(response)
     complete = events[-1]
     assert complete["type"] == "complete"
     assert complete["scored"] == 2
-    assert complete["message"] == "Scored 2 images, skipped 1 image."
+    assert complete["skipped"] == 1
+    assert complete["skip_reasons"] == {"missing_metadata": 1}
+    assert complete["message"] == (
+        "Scored 2 images, skipped 1 image (1 image missing metadata)."
+    )
 
 
 @patch("src.main.run_scoring", side_effect=Exception("NoImagesError"))
