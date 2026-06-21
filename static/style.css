@@ -23,15 +23,15 @@ body {
   border-bottom: 1px solid #d9e2ec;
 }
 
-h1 {
+.header h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 3.2rem;
 }
 
 .subtitle {
   margin: 4px 0 0;
   color: #52606d;
-  font-size: 0.95rem;
+  font-size: 1.8rem;
 }
 
 .actions {
@@ -47,7 +47,7 @@ h1 {
   border-radius: 6px;
   background: #147d64;
   color: #ffffff;
-  font-size: 0.95rem;
+  font-size: 1.8rem;
   cursor: pointer;
 }
 
@@ -58,7 +58,7 @@ h1 {
 
 .status {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 1.8rem;
 }
 
 .status-success {
@@ -96,7 +96,7 @@ h1 {
   padding: 10px 12px;
   border-radius: 6px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-  font-size: 13px;
+  font-size: 1.6rem;
   line-height: 1.5;
   pointer-events: none;
 }
