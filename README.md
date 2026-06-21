@@ -149,7 +149,7 @@ shadescapes/
 
 |                 |                                                                                                                                                                                                                                                             |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Source**      | [NUS-UAL/global-streetscapes](https://huggingface.co/datasets/NUS-UAL/global-streetscapes) — Mapillary street-level imagery with contextual metadata                                                                                                        |
+| **Source**      | [NUS Global Streetscapes](https://ual.sg/project/global-streetscapes/) — Mapillary street-level imagery with contextual metadata                                                                                                        |
 | **Filter**      | `country = 'Singapore'`; `lighting_condition = 'day'`; `platform = 'walking surface'`; `quality = 'good'`; `weather = 'clear'`; `source = 'Mapillary'`; `Sidewalk > 0`; then spatial cluster around one corridor (~53 metadata rows, 45 downloaded images) |
 | **Metadata**    | Per image in `data/filtered_streetscapes.csv`: `lat`, `lon`, `hour`, `heading`, `sidewalk_pct` — map placement, capture time/direction, and sidewalk share of frame |
 | **Eval subset** | Author-curated ~30 real images from `sample/` plus 7 synthetic images for category gaps (`building_shadow`, true `covered_walkway`, etc.); each image hand-labeled for pedestrian shade (1–5) and `scene_category` |
@@ -272,7 +272,7 @@ uv run pytest -m integration     # live Gemini tests (requires GOOGLE_API_KEY)
 
 ## Further reading
 
-- `[PROCESS.md](PROCESS.md)` — build narrative, decisions dropped, where judgment was exercised
-- `[eval/evaluation.ipynb](eval/evaluation.ipynb)` — full eval with Tier A/B/C outputs and image galleries
-- `[docs/deployment-estimates.md](docs/deployment-estimates.md)` — assumptions behind deployment time, cost, and RAM figures
+- [PROCESS.md](PROCESS.md) — build narrative, decisions dropped, where judgment was exercised
+- [eval/evaluation.ipynb](eval/evaluation.ipynb) — full eval with Tier A/B/C outputs and image galleries
+- [docs/deployment-estimates.md](docs/deployment-estimates.md) — assumptions behind deployment time, cost, and RAM figures
 
