@@ -56,6 +56,30 @@ def test_index_with_missing_metadata_optional_fields(client, data_dir):
     assert "No metadata file detected" not in response.text
 
 
+def test_index_plots_all_metadata_regardless_of_images(client, data_dir):
+    metadata_path = data_dir / "data" / "filtered_streetscapes.csv"
+    metadata = pd.read_csv(metadata_path)
+    extra_row = pd.DataFrame(
+        [
+            {
+                "uuid": "ccc-333",
+                "lat": 1.3020,
+                "lon": 103.8020,
+            }
+        ]
+    )
+    pd.concat([metadata, extra_row], ignore_index=True).to_csv(metadata_path, index=False)
+
+    exploration = data_dir / "data" / "images" / "exploration"
+    (exploration / "bbb-222.jpeg").unlink()
+
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "folium-map" in response.text
+    assert "1.302" in response.text
+    assert "103.802" in response.text
+
+
 def test_image_route_404(client):
     response = client.get("/images/does-not-exist.jpeg")
     assert response.status_code == 404

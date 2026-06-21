@@ -243,16 +243,19 @@ def test_run_scoring_emits_batch_progress(mock_score_image, data_dir, monkeypatc
 def test_run_scoring_missing_metadata(data_dir, monkeypatch):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     (data_dir / "data" / "filtered_streetscapes.csv").unlink()
-    with pytest.raises(NoMetadataError):
+    with pytest.raises(NoMetadataError, match="data/filtered_streetscapes.csv not found"):
         run_scoring()
 
 
 def test_run_scoring_no_images(tmp_path, monkeypatch):
     exploration = tmp_path / "data" / "images" / "exploration"
     exploration.mkdir(parents=True)
+    monkeypatch.setattr("src.config.PROJECT_ROOT", tmp_path)
     monkeypatch.setattr("src.score.IMAGES_DIR", exploration)
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    with pytest.raises(NoImagesError):
+    with pytest.raises(
+        NoImagesError, match="No images found in data/images/exploration"
+    ):
         run_scoring()
 
 

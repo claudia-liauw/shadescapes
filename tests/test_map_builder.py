@@ -32,13 +32,37 @@ def test_load_map_points_missing_metadata(data_dir):
     assert points.empty
 
 
-def test_load_map_points_joins_images(data_dir):
-    points = load_map_points()
-    assert len(points) == 2
-    assert set(points["uuid"]) == {"aaa-111", "bbb-222"}
-    assert points.loc[0, "pedestrian_shade_score"] is None or pd.isna(
-        points.loc[0, "pedestrian_shade_score"]
+def test_load_map_points_plots_all_metadata_regardless_of_images(data_dir):
+    metadata_path = data_dir / "data" / "filtered_streetscapes.csv"
+    metadata = pd.read_csv(metadata_path)
+    extra_row = pd.DataFrame(
+        [
+            {
+                "uuid": "ccc-333",
+                "source": "Mapillary",
+                "orig_id": 3,
+                "lat": 1.3020,
+                "lon": 103.8020,
+                "heading": 270.0,
+                "green_view_index": 0.30,
+                "sky_view_index": 0.20,
+                "place": "street",
+            }
+        ]
     )
+    pd.concat([metadata, extra_row], ignore_index=True).to_csv(metadata_path, index=False)
+
+    exploration = data_dir / "data" / "images" / "exploration"
+    (exploration / "bbb-222.jpeg").unlink()
+
+    points = load_map_points()
+    assert len(points) == 3
+    assert set(points["uuid"]) == {"aaa-111", "bbb-222", "ccc-333"}
+
+    html = render_map_html(build_map())
+    assert "folium-map" in html
+    assert "1.302" in html
+    assert "103.802" in html
 
 
 def test_load_map_points_with_scores(data_dir):
