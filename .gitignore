@@ -16,5 +16,5 @@ data/scores.csv
 cache/
 expt.ipynb
 instructions.md
-process.md
+development.md
 vlm-approach.md
