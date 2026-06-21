@@ -76,6 +76,15 @@ body {
   color: #ba2525;
 }
 
+.metadata-notice {
+  margin: 0;
+  padding: 12px 20px;
+  background: #fff3cd;
+  color: #856404;
+  border-bottom: 1px solid #ffeeba;
+  font-size: 1.6rem;
+}
+
 .map {
   position: relative;
   flex: 1;

@@ -30,6 +30,7 @@ def test_index_renders_map(client):
     assert response.status_code == 200
     assert "ShadeScapes" in response.text
     assert "Run Shade Scoring" in response.text
+    assert "No metadata file detected" not in response.text
 
 
 def test_index_with_missing_metadata_file(client, data_dir):
@@ -37,6 +38,7 @@ def test_index_with_missing_metadata_file(client, data_dir):
     response = client.get("/")
     assert response.status_code == 200
     assert "ShadeScapes" in response.text
+    assert "No metadata file detected: data/filtered_streetscapes.csv" in response.text
 
 
 def test_index_with_missing_metadata_optional_fields(client, data_dir):
@@ -51,6 +53,7 @@ def test_index_with_missing_metadata_optional_fields(client, data_dir):
     assert response.status_code == 200
     assert "ShadeScapes" in response.text
     assert "folium-map" in response.text
+    assert "No metadata file detected" not in response.text
 
 
 def test_image_route_404(client):

@@ -26,10 +26,17 @@ def health():
 def index(request: Request):
     folium_map = build_map()
     map_html = render_map_html(folium_map)
+    metadata_relative_path = config.METADATA_CSV.relative_to(
+        config.PROJECT_ROOT
+    ).as_posix()
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"map_html": map_html},
+        {
+            "map_html": map_html,
+            "metadata_missing": not config.METADATA_CSV.exists(),
+            "metadata_relative_path": metadata_relative_path,
+        },
     )
 
 

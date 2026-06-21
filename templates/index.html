@@ -18,6 +18,10 @@
     </div>
   </header>
 
+  {% if metadata_missing %}
+  <p class="metadata-notice" role="status">No metadata file detected: {{ metadata_relative_path }}</p>
+  {% endif %}
+
   <main class="map">
     <div id="map-container">{{ map_html|safe }}</div>
     <div class="map-legend" aria-label="Shade index legend">
