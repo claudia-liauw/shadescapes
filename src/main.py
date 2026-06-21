@@ -1,4 +1,3 @@
-from pathlib import Path
 import asyncio
 import json
 
@@ -26,9 +25,7 @@ def health():
 def index(request: Request):
     folium_map = build_map()
     map_html = render_map_html(folium_map)
-    metadata_relative_path = config.METADATA_CSV.relative_to(
-        config.PROJECT_ROOT
-    ).as_posix()
+    metadata_relative_path = config.relative_path(config.METADATA_CSV)
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -84,11 +81,16 @@ async def score_images(force: bool = Query(default=False)):
 
 @app.get("/images/{filename}")
 def get_image(filename: str):
+    image_path = config.IMAGES_DIR / filename
+
+    def not_found_detail() -> str:
+        return f"Image not found: {config.relative_path(image_path)}"
+
     if not filename.endswith(".jpeg"):
-        raise HTTPException(status_code=404, detail="Image not found")
-    image_path = (config.IMAGES_DIR / filename).resolve()
-    if not image_path.is_relative_to(config.IMAGES_DIR.resolve()):
-        raise HTTPException(status_code=404, detail="Image not found")
-    if not image_path.exists():
-        raise HTTPException(status_code=404, detail="Image not found")
-    return FileResponse(image_path, media_type="image/jpeg")
+        raise HTTPException(status_code=404, detail=not_found_detail())
+    resolved = image_path.resolve()
+    if not resolved.is_relative_to(config.IMAGES_DIR.resolve()):
+        raise HTTPException(status_code=404, detail=not_found_detail())
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail=not_found_detail())
+    return FileResponse(resolved, media_type="image/jpeg")

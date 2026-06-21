@@ -13,5 +13,9 @@ SCORES_CSV = DATA_DIR / "scores.csv"
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
 
+def relative_path(path: Path) -> str:
+    return path.relative_to(PROJECT_ROOT).as_posix()
+
+
 def get_google_api_key() -> str | None:
     return os.getenv("GOOGLE_API_KEY")

@@ -59,6 +59,9 @@ def test_index_with_missing_metadata_optional_fields(client, data_dir):
 def test_image_route_404(client):
     response = client.get("/images/does-not-exist.jpeg")
     assert response.status_code == 404
+    assert response.json()["detail"] == (
+        "Image not found: data/images/exploration/does-not-exist.jpeg"
+    )
 
 
 def test_image_route_success(client):
@@ -81,6 +84,20 @@ def test_score_endpoint_missing_metadata(client, data_dir, monkeypatch):
     events = parse_score_events(response)
     assert events[-1]["type"] == "error"
     assert events[-1]["status"] == 400
+    assert events[-1]["detail"] == "data/filtered_streetscapes.csv not found"
+
+
+def test_score_endpoint_no_images(client, data_dir, monkeypatch):
+    exploration = data_dir / "data" / "images" / "exploration"
+    for image_path in exploration.glob("*.jpeg"):
+        image_path.unlink()
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    response = client.post("/api/score")
+    assert response.status_code == 200
+    events = parse_score_events(response)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 400
+    assert events[-1]["detail"] == "No images found in data/images/exploration"
 
 
 @patch("src.main.run_scoring")

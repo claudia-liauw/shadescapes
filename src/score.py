@@ -332,10 +332,10 @@ def run_scoring(
 
     images = discover_images()
     if not images:
-        raise NoImagesError(f"No images found in {IMAGES_DIR}")
+        raise NoImagesError(f"No images found in {config.relative_path(IMAGES_DIR)}")
 
     if not METADATA_CSV.exists():
-        raise NoMetadataError(f"{METADATA_CSV} not found")
+        raise NoMetadataError(f"{config.relative_path(METADATA_CSV)} not found")
 
     metadata_rows = {
         str(row["uuid"]): row for _, row in load_metadata().iterrows()
