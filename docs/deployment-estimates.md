@@ -30,13 +30,13 @@ The demo feels much slower than 2–3 s per batch because of the free-tier rate 
 
 After each batch, the app sleeps `60 s − batch_duration` before starting the next. Demo throughput is therefore capped at **one batch per minute**, regardless of how fast inference is.
 
-**Example — 50 sample images:**
+**Example — 45 sample images:**
 
 | | |
 | - | - |
-| Batches | ⌈50 ÷ 15⌉ = **4** |
-| Inference only | 4 × ~2–3 s ≈ **8–12 s** |
-| Demo wall-clock | 4 × ~60 s ≈ **~4 min** |
+| Batches | ⌈45 ÷ 15⌉ = **3** |
+| Inference only | 3 × ~2–3 s ≈ **6–9 s** |
+| Demo wall-clock | 3 × ~60 s ≈ **~3 min** |
 
 Production with a higher API quota could run batches back-to-back at the ~2–3 s cadence instead of waiting a full minute between batches.
 
@@ -44,7 +44,7 @@ Production with a higher API quota could run batches back-to-back at the ~2–3 
 
 ## Island-scale time (“tens of hours”)
 
-**Assumption:** ~500,000 street-level images — an illustrative Singapore-scale order of magnitude, **not** measured from this repo’s 50-image demo set.
+**Assumption:** ~500,000 street-level images — an illustrative Singapore-scale order of magnitude, **not** measured from this repo’s 45-image demo set.
 
 **Formula (no rate-limit waits):**
 
@@ -139,6 +139,6 @@ API inference spend dominates operating cost; container CPU/RAM is secondary for
 
 ## Tightening these estimates
 
-1. **Latency** — Log `batch_start` → batch complete in `run_scoring_batch` over the full 50-image demo set; report p50/p95.
+1. **Latency** — Log `batch_start` → batch complete in `run_scoring_batch` over the full 45-image demo set; report p50/p95.
 2. **Cost** — Read `usage_metadata` (or equivalent) from Gemini responses for a sample of images; extrapolate.
 3. **RAM** — Run `docker stats` while serving the map and during a scoring run; record peak RSS.

@@ -95,7 +95,7 @@ The demo and eval pipelines share `src.score.score_image` but use **separate dat
 
 |         | Demo app                     | Evaluation                                                                                        |
 | ------- | ---------------------------- | ------------------------------------------------------------------------------------------------- |
-| Images  | `data/images/sample/` (50)   | Noted in `eval/data/human_labels.csv` — `data/images/sample/` (30) + `data/images/synthetic/` (7) |
+| Images  | `data/images/sample/` (45)   | Noted in `eval/data/human_labels.csv` — `data/images/sample/` (30) + `data/images/synthetic/` (7) |
 | Scores  | `data/scores.csv`            | `eval/data/scores.csv`                                                                            |
 | Trigger | Button in browser            | `uv run python -m eval.score_eval`                                                                |
 | Purpose | Live "AI runs on click" demo | Human-label comparison, stability, error analysis                                                 |
@@ -129,7 +129,7 @@ shadescapes/
 │   ├── synthetic_streetscapes.csv  # metadata for generated eval images
 │   ├── scores.csv                  # demo VLM outputs (written by app, not committed)
 │   └── images/
-│       ├── sample/                 # ~50 JPEGs — image pool
+│       ├── sample/                 # 45 JPEGs — image pool
 │       └── synthetic/              # 7 PNGs — generated gap-fill for eval
 │
 ├── eval/
@@ -150,7 +150,7 @@ shadescapes/
 |                 |                                                                                                                                                                                                                                                             |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Source**      | [NUS-UAL/global-streetscapes](https://huggingface.co/datasets/NUS-UAL/global-streetscapes) — Mapillary street-level imagery with contextual metadata                                                                                                        |
-| **Filter**      | `country = 'Singapore'`; `lighting_condition = 'day'`; `platform = 'walking surface'`; `quality = 'good'`; `weather = 'clear'`; `source = 'Mapillary'`; `Sidewalk > 0`; then spatial cluster around one corridor (~53 metadata rows, ~50 downloaded images) |
+| **Filter**      | `country = 'Singapore'`; `lighting_condition = 'day'`; `platform = 'walking surface'`; `quality = 'good'`; `weather = 'clear'`; `source = 'Mapillary'`; `Sidewalk > 0`; then spatial cluster around one corridor (~53 metadata rows, 45 downloaded images) |
 | **Metadata**    | Per image in `data/filtered_streetscapes.csv`: `lat`, `lon`, `hour`, `heading`, `sidewalk_pct` — map placement, capture time/direction, and sidewalk share of frame |
 | **Eval subset** | Author-curated ~30 real images from `sample/` plus 7 synthetic images for category gaps (`building_shadow`, true `covered_walkway`, etc.); each image hand-labeled for pedestrian shade (1–5) and `scene_category` |
 | **Licensing**   | Mapillary imagery per source terms; dataset CC-licensed                                                                                                                                                                                                     |
@@ -235,7 +235,7 @@ uv sync
 uv run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Open [http://localhost:8000](http://localhost:8000). Click **Run Shade Scoring** to call the VLM on the 50 sample images. Markers turn green (shaded) → yellow → red (exposed); click a marker for the score, shade sources, confidence, reasoning, and thumbnail.
+Open [http://localhost:8000](http://localhost:8000). Click **Run Shade Scoring** to call the VLM on the 45 sample images. Markers turn green (shaded) → yellow → red (exposed); click a marker for the score, shade sources, confidence, reasoning, and thumbnail.
 
 ### Tests
 
