@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
@@ -5,6 +7,35 @@ from PIL import Image
 
 from src.config import IMAGES_DIR, METADATA_CSV, SCORES_CSV
 from src.main import app
+
+
+@pytest.fixture
+def gemini_response():
+    return json.dumps(
+        {
+            "pedestrian_shade_score": 0.75,
+            "shade_sources": ["building_overhang"],
+            "confidence": "high",
+            "reasoning": "Building shadow on sidewalk.",
+        }
+    )
+
+
+@pytest.fixture
+def gemini_api_fails(gemini_response):
+    def side_effect(image_path, _prompt):
+        if image_path.stem == "bbb-222":
+            raise RuntimeError("API down")
+        return gemini_response
+
+    return side_effect
+
+
+@pytest.fixture
+def image_without_metadata(data_dir):
+    exploration = data_dir / "data" / "images" / "exploration"
+    (exploration / "ccc-333.jpeg").write_bytes(b"fake-image-3")
+    return data_dir
 
 
 @pytest.fixture

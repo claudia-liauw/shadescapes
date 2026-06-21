@@ -168,20 +168,10 @@ def test_score_endpoint_missing_api_key(client, monkeypatch):
 
 
 @patch("src.score._call_gemini")
-def test_score_endpoint_completes_with_api_errors(mock_call_gemini, client, monkeypatch):
-    def gemini_side_effect(image_path, _prompt):
-        if image_path.stem == "bbb-222":
-            raise RuntimeError("API down")
-        return json.dumps(
-            {
-                "pedestrian_shade_score": 0.75,
-                "shade_sources": ["building_overhang"],
-                "confidence": "high",
-                "reasoning": "Building shadow on sidewalk.",
-            }
-        )
-
-    mock_call_gemini.side_effect = gemini_side_effect
+def test_score_endpoint_completes_with_api_errors(
+    mock_call_gemini, client, gemini_api_fails, monkeypatch
+):
+    mock_call_gemini.side_effect = gemini_api_fails
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
 
     response = client.post("/api/score?force=true")
@@ -195,6 +185,35 @@ def test_score_endpoint_completes_with_api_errors(mock_call_gemini, client, monk
     assert complete["errors"] == ["bbb-222: API down"]
     assert complete["message"].startswith(
         "Scored 1 image, skipped 0 images. 1 scoring error."
+    )
+
+
+@patch("src.score._call_gemini")
+def test_score_endpoint_combines_skips_and_api_errors(
+    mock_call_gemini,
+    client,
+    image_without_metadata,
+    gemini_api_fails,
+    monkeypatch,
+):
+    mock_call_gemini.side_effect = gemini_api_fails
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    response = client.post("/api/score?force=true")
+    assert response.status_code == 200
+
+    events = parse_score_events(response)
+    complete = events[-1]
+    assert complete["type"] == "complete"
+    assert complete["scored"] == 1
+    assert complete["skipped"] == 1
+    assert complete["skip_reasons"] == {"missing_metadata": 1}
+    assert complete["skips"] == [
+        "ccc-333: no metadata row in data/filtered_streetscapes.csv"
+    ]
+    assert complete["errors"] == ["bbb-222: API down"]
+    assert complete["message"].startswith(
+        "Scored 1 image, skipped 1 image (1 image missing metadata). 1 scoring error."
     )
 
 

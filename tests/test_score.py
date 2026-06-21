@@ -86,16 +86,9 @@ def test_load_existing_scores_empty_file(data_dir):
 
 
 @patch("src.score._call_gemini")
-def test_score_image_success(mock_call, data_dir, monkeypatch):
+def test_score_image_success(mock_call, data_dir, monkeypatch, gemini_response):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    mock_call.return_value = json.dumps(
-        {
-            "pedestrian_shade_score": 0.75,
-            "shade_sources": ["building_overhang"],
-            "confidence": "high",
-            "reasoning": "Building shadow on sidewalk.",
-        }
-    )
+    mock_call.return_value = gemini_response
     image_path = data_dir / "data" / "images" / "exploration" / "aaa-111.jpeg"
     metadata = pd.read_csv(data_dir / "data" / "filtered_streetscapes.csv")
     row = metadata.loc[metadata["uuid"] == "aaa-111"].iloc[0]
@@ -201,6 +194,35 @@ def test_run_scoring_skips_missing_metadata_row(mock_score_image, data_dir, monk
     assert summary.skip_reasons == {"missing_metadata": 1}
     assert summary.skips == ["bbb-222: no metadata row in data/filtered_streetscapes.csv"]
     mock_score_image.assert_called_once()
+
+
+@patch("src.score._call_gemini")
+def test_run_scoring_combines_skips_and_api_errors(
+    mock_call_gemini,
+    image_without_metadata,
+    gemini_api_fails,
+    monkeypatch,
+):
+    mock_call_gemini.side_effect = gemini_api_fails
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    summary = run_scoring(force=True)
+
+    assert summary.scored == 1
+    assert summary.skipped == 1
+    assert summary.skip_reasons == {"missing_metadata": 1}
+    assert summary.skips == [
+        "ccc-333: no metadata row in data/filtered_streetscapes.csv"
+    ]
+    assert summary.errors == ["bbb-222: API down"]
+    assert summary.message.startswith(
+        "Scored 1 image, skipped 1 image (1 image missing metadata). 1 scoring error."
+    )
+
+    scores = pd.read_csv(image_without_metadata / "data" / "scores.csv")
+    assert len(scores) == 1
+    assert scores.iloc[0]["uuid"] == "aaa-111"
+    assert scores.iloc[0]["pedestrian_shade_score"] == 0.75
 
 
 @patch("src.score.time.sleep")
