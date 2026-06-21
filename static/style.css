@@ -58,7 +58,14 @@ body {
 
 .status {
   margin: 0;
-  font-size: 1.8rem;
+  font-size: 1.5rem;
+  white-space: pre-line;
+  text-align: right;
+  max-width: 70rem;
+}
+
+.status-progress {
+  color: #52606d;
 }
 
 .status-success {

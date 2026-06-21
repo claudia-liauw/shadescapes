@@ -1,7 +1,9 @@
 from pathlib import Path
+import asyncio
+import json
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -32,16 +34,45 @@ def index(request: Request):
 
 
 @app.post("/api/score")
-def score_images(force: bool = Query(default=False)):
-    try:
-        summary = run_scoring(force=force)
-        return summary.model_dump()
-    except MissingApiKeyError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except NoImagesError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except NoMetadataError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+async def score_images(force: bool = Query(default=False)):
+    async def stream_scoring():
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def on_progress(message: str) -> None:
+            loop.call_soon_threadsafe(queue.put_nowait, ("progress", message))
+
+        def worker() -> None:
+            try:
+                summary = run_scoring(force=force, on_progress=on_progress)
+                loop.call_soon_threadsafe(queue.put_nowait, ("complete", summary))
+            except MissingApiKeyError as exc:
+                loop.call_soon_threadsafe(
+                    queue.put_nowait, ("error", 503, str(exc))
+                )
+            except (NoImagesError, NoMetadataError) as exc:
+                loop.call_soon_threadsafe(
+                    queue.put_nowait, ("error", 400, str(exc))
+                )
+
+        loop.run_in_executor(None, worker)
+
+        while True:
+            event = await queue.get()
+            if event[0] == "progress":
+                yield json.dumps({"type": "progress", "message": event[1]}) + "\n"
+            elif event[0] == "complete":
+                summary = event[1]
+                yield json.dumps({"type": "complete", **summary.model_dump()}) + "\n"
+                break
+            elif event[0] == "error":
+                _, status_code, detail = event
+                yield json.dumps(
+                    {"type": "error", "status": status_code, "detail": detail}
+                ) + "\n"
+                break
+
+    return StreamingResponse(stream_scoring(), media_type="application/x-ndjson")
 
 
 @app.get("/images/{filename}")

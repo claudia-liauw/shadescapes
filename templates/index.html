@@ -34,6 +34,10 @@
     const status = document.getElementById("status");
     const scoreMessage = sessionStorage.getItem("scoreMessage");
 
+    function formatScoreMessage(data) {
+      return data.message || "";
+    }
+
     if (scoreMessage) {
       status.textContent = scoreMessage;
       status.className = "status status-success";
@@ -48,12 +52,44 @@
 
       try {
         const response = await fetch("/api/score", { method: "POST" });
-        const data = await response.json();
         if (!response.ok) {
-          throw new Error(data.detail || "Scoring failed");
+          throw new Error("Scoring failed");
         }
-        sessionStorage.setItem("scoreMessage", data.message);
-        window.location.reload();
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.trim()) {
+              continue;
+            }
+
+            const data = JSON.parse(line);
+            if (data.type === "progress") {
+              status.textContent = data.message;
+              status.className = "status status-progress";
+            } else if (data.type === "error") {
+              throw new Error(data.detail || "Scoring failed");
+            } else if (data.type === "complete") {
+              sessionStorage.setItem("scoreMessage", formatScoreMessage(data));
+              window.location.reload();
+              return;
+            }
+          }
+        }
+
+        throw new Error("Scoring finished without a result");
       } catch (error) {
         status.textContent = error.message;
         status.className = "status status-error";

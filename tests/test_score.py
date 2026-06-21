@@ -203,6 +203,43 @@ def test_run_scoring_skips_missing_metadata_row(mock_score_image, data_dir, monk
     mock_score_image.assert_called_once()
 
 
+@patch("src.score.time.sleep")
+def test_wait_with_countdown_counts_down(mock_sleep):
+    from src.score import _wait_with_countdown
+
+    from itertools import chain, repeat
+
+    messages = []
+    perf_values = chain([0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 3.1], repeat(3.1))
+    with patch("src.score.time.perf_counter", side_effect=perf_values):
+        _wait_with_countdown(1, 15, 41, 3.0, [], messages.append)
+
+    assert messages == [
+        "Batch 1 complete (15/41 total processed), rate limit: waiting 3s before next batch (15/min max)",
+        "Batch 1 complete (15/41 total processed), rate limit: waiting 2s before next batch (15/min max)",
+        "Batch 1 complete (15/41 total processed), rate limit: waiting 1s before next batch (15/min max)",
+    ]
+
+
+@patch("src.score.score_image")
+def test_run_scoring_emits_batch_progress(mock_score_image, data_dir, monkeypatch):
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    mock_score_image.return_value = ShadeScore(
+        pedestrian_shade_score=0.5,
+        shade_sources=["street_trees"],
+        confidence="medium",
+        reasoning="Partial cover.",
+    )
+    progress: list[str] = []
+
+    summary = run_scoring(force=True, on_progress=progress.append)
+
+    assert summary.scored == 2
+    assert progress == summary.progress
+    assert any("Batch 1/1: scoring 2 requests" in line for line in progress)
+    assert any("Batch 1 complete (2/2 total processed)" in line for line in progress)
+
+
 def test_run_scoring_missing_metadata(data_dir, monkeypatch):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     (data_dir / "data" / "filtered_streetscapes.csv").unlink()

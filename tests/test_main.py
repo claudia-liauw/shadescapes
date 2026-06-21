@@ -1,4 +1,5 @@
 from unittest.mock import patch
+import json
 
 import pandas as pd
 import pytest
@@ -7,6 +8,10 @@ from fastapi.testclient import TestClient
 from src.config import get_google_api_key
 from src.main import app
 from src.models import ScoreSummary
+
+
+def parse_score_events(response):
+    return [json.loads(line) for line in response.text.strip().split("\n") if line]
 
 
 @pytest.fixture
@@ -69,7 +74,10 @@ def test_score_endpoint_missing_metadata(client, data_dir, monkeypatch):
     (data_dir / "data" / "filtered_streetscapes.csv").unlink()
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     response = client.post("/api/score")
-    assert response.status_code == 400
+    assert response.status_code == 200
+    events = parse_score_events(response)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 400
 
 
 @patch("src.main.run_scoring")
@@ -77,8 +85,11 @@ def test_score_endpoint_success(mock_run_scoring, client):
     mock_run_scoring.return_value = ScoreSummary(scored=2, skipped=1, errors=[])
     response = client.post("/api/score")
     assert response.status_code == 200
-    assert response.json()["scored"] == 2
-    assert response.json()["message"] == "Scored 2 images, skipped 1 image."
+    events = parse_score_events(response)
+    complete = events[-1]
+    assert complete["type"] == "complete"
+    assert complete["scored"] == 2
+    assert complete["message"] == "Scored 2 images, skipped 1 image."
 
 
 @patch("src.main.run_scoring", side_effect=Exception("NoImagesError"))
@@ -87,7 +98,9 @@ def test_score_endpoint_handles_no_images(mock_run_scoring, client):
 
     mock_run_scoring.side_effect = NoImagesError("No images found")
     response = client.post("/api/score")
-    assert response.status_code == 400
+    events = parse_score_events(response)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 400
 
 
 def test_score_endpoint_missing_api_key(client, monkeypatch):
@@ -96,7 +109,9 @@ def test_score_endpoint_missing_api_key(client, monkeypatch):
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     with patch("src.main.run_scoring", side_effect=MissingApiKeyError("missing")):
         response = client.post("/api/score")
-    assert response.status_code == 503
+    events = parse_score_events(response)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["status"] == 503
 
 
 @pytest.mark.integration
@@ -107,7 +122,9 @@ def test_score_endpoint_live(integration_client, integration_data_dir):
     response = integration_client.post("/api/score")
     assert response.status_code == 200
 
-    body = response.json()
+    events = parse_score_events(response)
+    body = events[-1]
+    assert body["type"] == "complete"
     assert body["scored"] == 1
     assert body["skipped"] == 0
     assert body["errors"] == []
