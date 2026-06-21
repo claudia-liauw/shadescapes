@@ -167,6 +167,37 @@ def test_score_endpoint_missing_api_key(client, monkeypatch):
     assert events[-1]["status"] == 503
 
 
+@patch("src.score._call_gemini")
+def test_score_endpoint_completes_with_api_errors(mock_call_gemini, client, monkeypatch):
+    def gemini_side_effect(image_path, _prompt):
+        if image_path.stem == "bbb-222":
+            raise RuntimeError("API down")
+        return json.dumps(
+            {
+                "pedestrian_shade_score": 0.75,
+                "shade_sources": ["building_overhang"],
+                "confidence": "high",
+                "reasoning": "Building shadow on sidewalk.",
+            }
+        )
+
+    mock_call_gemini.side_effect = gemini_side_effect
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    response = client.post("/api/score?force=true")
+    assert response.status_code == 200
+
+    events = parse_score_events(response)
+    complete = events[-1]
+    assert complete["type"] == "complete"
+    assert complete["scored"] == 1
+    assert complete["skipped"] == 0
+    assert complete["errors"] == ["bbb-222: API down"]
+    assert complete["message"].startswith(
+        "Scored 1 image, skipped 0 images. 1 scoring error."
+    )
+
+
 @pytest.mark.integration
 def test_score_endpoint_live(integration_client, integration_data_dir):
     if not get_google_api_key():
