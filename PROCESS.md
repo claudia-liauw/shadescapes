@@ -4,15 +4,21 @@ How ShadeScapes was put together over a two-day prototype sprint — what worked
 
 ---
 
+## Coding agents
+
+Composer 2.5 was used for more complex tasks like design, planning, and debugging. Codex 5.1 Mini (a cheaper model), was used for implementation.
+
+---
+
 ## Dataset curation
 
-The instructions to download the images required that I first had metadata downloaded from [NUS Global Streetscapes](https://huggingface.co/datasets/NUS-UAL/global-streetscapes) on Hugging Face. The full dataset was over 70 GB (tabular data only), so it was clear that I had to be selective about what I downloaded. I passed the schema to AI for an initial pass on which fields looked useful for a Singapore shade study, but its suggestions weren't that great. Therefore, I explored the actual columns in the data before settling on the metadata filters documented in the README. I downloaded the 2 GB parquet file and used DuckDB SQL to load only required rows into memory. I further filtered spatially to ~50 rows for demo, then saved to CSV for use with the [scripts from the provider](https://github.com/ualsg/global-streetscapes).
+The instructions to download the images required that I first had metadata downloaded from [NUS Global Streetscapes](https://huggingface.co/datasets/NUS-UAL/global-streetscapes) on Hugging Face. The full dataset was over 70 GB (tabular data only), so it was clear that I had to be selective about what I downloaded. I fed the schema to AI for an initial pass on which fields looked useful for a Singapore shade study, but its suggestions weren't that great. Therefore, I explored the actual columns in the data before settling on the metadata filters documented in the README. I downloaded the 2 GB parquet file and used DuckDB SQL to load only required rows into memory. I further filtered spatially to ~50 rows for demo, then saved to CSV for use with the [scripts from the provider](https://github.com/ualsg/global-streetscapes).
 
 ---
 
 ## Architecture
 
-I manually tested out some components (Gemini API and Folium map) and sketched the architecture in [`docs/concept.md`](docs/concept.md). Initially I thought to download Singapore's geodata and do a spatial join with the points or a map from OpenStreetMap (`osmnx`) and display with `plotly`, but Folium was the better approach.
+I manually tested out some components (Gemini API and Folium map) and sketched the architecture in [`docs/concept.md`](docs/concept.md). Initially I thought to download Singapore's geodata or a map from OpenStreetMap (`osmnx`) and do a spatial join with the points and display with `plotly`, but Folium was the better approach as it had map details.
 
 This architecture was passed to AI for spec and plan generation as part of spec-driven development.
 
