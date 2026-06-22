@@ -1,12 +1,17 @@
 **readme**
+
 Problem (see concept)
+
 Solution: architecture
+
 How
 - Data story
 - Eval: methodology and results
 - see process for full
+
 How to run
 - git clone, add .env file, docker compose up, open localhost, score
+
 Limitations
 - only evaluated on a small set and for one area in sg
 - synthetic data: only generated 7 images, quality can be further tuned.
@@ -15,10 +20,12 @@ Limitations
 - free tier: limited to 15 per batch, inference is slow
 - scalability issues: manual evaluation, API reliance
 - did not evaluate shade source
+
 Deployment section
 - who would run this: government agency (nparks, URA) with a set of images and metadata. alternatively, a dropped idea was that citizens could use it to map out a shaded route
 - monitoring: track API failure rate, consider a classifier to label important categories for analysis, consider collecting feedback from users about whether they agree with the score, prediction latency, flag low confidence scores for human review
 - risk: predictions may be based on the wrong time of day, outdated, or not based on a walkable path
+
 Demo video
 
 **process**
