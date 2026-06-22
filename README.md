@@ -75,7 +75,7 @@ flowchart TB
 
 ### VLM contract
 
-Each image is scored with `gemini-3.1-flash-lite` (override via `GEMINI_MODEL` in .env). The prompt anchors to **pedestrian shade on the walkable path** and passes `heading` and `hour` from metadata when available.
+Each image is scored with `gemini-3.1-flash-lite` (override via `GEMINI_MODEL` in `.env`). The prompt anchors to **pedestrian shade on the walkable path** and passes `heading` and `hour` from metadata when available.
 
 ```json
 {
@@ -158,17 +158,17 @@ shadescapes/
 | **Synthetic**   | 7 images generated via Nano Banana for testing edge cases (not included on the demo map)                                                                                                                                                                    |
 
 
-Images are committed to the repo. Metadata lives in `data/filtered_streetscapes.csv` (real) and `data/synthetic_streetscapes.csv` (generated).
+A small set of sample images are committed to the repo for demo purposes. Metadata lives in `data/filtered_streetscapes.csv` (real) and `data/synthetic_streetscapes.csv` (generated).
 
 ---
 
 ## Evaluation
 
-**Claim:** VLM `pedestrian_shade_score` agrees with human shade judgment on a hand-labeled sample of streetscape images.
+**Claim:** VLM `pedestrian_shade_score` agrees moderately with human shade judgment on a hand-labeled sample of streetscape images.
 
 **Why this methodology:** Hand labels are a direct proxy for the construct we care about — *functional shade on the walkable path*. Spearman ρ is the primary metric because it is robust to scale differences between human ratings (1–5) and VLM output (0–1). We deliberately avoid LLM-as-judge (circular).
 
-Full methodology, charts, and mismatch galleries are in `[eval/evaluation.ipynb](eval/evaluation.ipynb)`.
+Full methodology, charts, and mismatch galleries are in [`eval/evaluation.ipynb`](eval/evaluation.ipynb).
 
 ### Setup
 
@@ -248,7 +248,7 @@ uv run pytest -m integration     # live Gemini tests (requires GOOGLE_API_KEY)
 
 ## Limitations
 
-- **Agreement with humans is only moderate** — Spearman ρ ≈ 0.53 and MAE ≈ 0.26 on 27 real images are useful for ranking corridors but not high enough for fine-grained planning without review. Future work can include switching to a better model, prompt tuning (e.g. few-shot prompting), or addressing below limitations.
+- **Agreement with humans is only moderate** — Spearman ρ ≈ 0.53 and MAE ≈ 0.26 on 27 real images are useful for ranking corridors but not high enough for fine-grained planning without review. Future work can include switching to a better model, fine-tuning, tuning the prompt (e.g. few-shot prompting), or addressing below limitations.
 - **Coverage** — Evaluation covers a small hand-labeled set from a single Singapore corridor; findings should not be read as island-wide.
 - **Synthetic gap-fill** — Only seven generated images stress-test edge cases; their realism and use case fidelity could be improved.
 - **Ground-truth noise** — One rater labeled all images. Images can be hard to judge even for humans, and sidewalks are frequently partial, obstructed, or pushed to the frame edge.
@@ -262,7 +262,7 @@ uv run pytest -m integration     # live Gemini tests (requires GOOGLE_API_KEY)
 
 **Who would run this:** A government agency data team (NParks, URA) batch-scoring a curated set of street images and metadata, with results served on an internal map. A citizen-facing variant — pick a shaded walking route from scored corridors — was explored early on but dropped for this prototype.
 
-**Compute and cost (rough estimates):** Each batch scores 15 images in parallel via the Gemini API in **~2–12 s** (best case ~2 s when all calls land quickly; up to ~12 s when one straggler or JSON-retry call sets batch time). The demo is throttled to 15 requests/min on the free tier, so end-to-end scoring feels slow mostly from waiting between batches; a paid or production quota could run batches back-to-back at that ~2–12 s cadence. At island scale (~500k street images), API time is on the order of tens of hours at typical batch speeds, but could stretch toward ~100+ h if many batches hit the slow end — plus thousands of dollars in inference cost — so production would likely also need batched open-weight VLMs on GPU, distillation to a smaller classifier, or sparse re-scoring on changed corridors only. Expect ~1–2 GB RAM for the FastAPI container; inference cost dominates. See `[docs/deployment-estimates.md](docs/deployment-estimates.md)` for how these figures were derived.
+**Compute and cost (rough estimates):** Each batch scores 15 images in parallel via the Gemini API in **~2–12 s** (best case ~2 s when all calls land quickly; up to ~12 s when one straggler or JSON-retry call sets batch time). The demo is throttled to 15 requests/min on the free tier, so end-to-end scoring feels slow mostly from waiting between batches; a paid or production quota could run batches back-to-back at that ~2–12 s cadence. At island scale (~500k street images), API time is on the order of tens of hours at typical batch speeds, but could stretch toward ~100+ h if many batches hit the slow end — plus thousands of dollars in inference cost — so production would likely also need batched open-weight VLMs on GPU, distillation to a smaller classifier, or sparse re-scoring on changed corridors only. Expect ~1–2 GB RAM for the FastAPI container; inference cost dominates. See [`docs/deployment-estimates.md`](docs/deployment-estimates.md) for how these figures were derived.
 
 **Monitoring:** Track API failure and parse-error rates, prediction latency, and quota exhaustion. Route low-`confidence` scores to human review before they inform planning. For ongoing analysis, a lightweight classifier could tag high-salience categories (e.g. `tree_canopy`, `covered_walkway`) without calling the VLM on every image. Collect optional user feedback — *does this score match what you see on the ground?* — to catch drift and build a correction loop over time.
 
